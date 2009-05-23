@@ -1,0 +1,20 @@
+                             sphivedb
+
+SPHiveDB is a server for sqlite database. It use jsonrpc over HTTP to expose
+a network interface to use sqlite database. It supports to combine multiple
+sqlite databases into one file. It also supports to use multiple files. It is
+designed for the extreme sharding schema -- one sqlite database per user. 
+
+
+Test example:
+
+bash$ ./sphivedbsvr -p 8080 -f sphivedbsvr.ini
+bash$ ./testcli -h 127.0.0.1 -p 8080 -i 0 -u foobar -n addrbook -s "insert into addrbook values ( 1, \"cde\" ); select * from addrbook;"
+
+
+Any and all comments are appreciated.
+
+Enjoy!
+
+				-- stephen liu <stephen.nil@gmail.com>
+
