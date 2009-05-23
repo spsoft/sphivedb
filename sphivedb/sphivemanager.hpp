@@ -8,32 +8,29 @@
 
 class SP_JsonRpcReqObject;
 class SP_JsonArrayNode;
+class SP_NKTokenLockManager;
+class SP_HiveConfig;
 
 typedef struct sqlite3 sqlite3;
-typedef struct spmembuffer_map_t spmembuffer_map_t;
 
 class SP_HiveManager {
 public:
 	SP_HiveManager();
 	~SP_HiveManager();
 
-	int init( const char * datadir );
+	int init( SP_HiveConfig * config, SP_NKTokenLockManager * lockManager );
 
 	int execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * result );
 
 private:
 
-	// for sqlite memvfs
-	static void * load( void * arg, const char * path, int * len );
-	static int save( void * arg, const char * path, char * buffer, int len );
-
 	static int doSelect( sqlite3 * handle, const char * sql, SP_JsonArrayNode * result );
 	static int doUpdate( sqlite3 * handle, const char * sql, SP_JsonArrayNode * result );
 
 private:
+	SP_NKTokenLockManager * mLockManager;
+	SP_HiveConfig * mConfig;
 	void * mDbm;
-
-	spmembuffer_map_t * mBuffMap;
 };
 
 #endif

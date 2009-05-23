@@ -39,17 +39,12 @@ static void spmemvfsDebug(const char *format, ...){
 
 //===========================================================================
 
-typedef struct spmemfile_t spmemfile_t;
-
-struct spmemfile_t {
+typedef struct spmemfile_t {
 	sqlite3_file base;
-	spmemvfs_cb_t cb;
 	char * path;
 	int flags;
-	int total;
-	int len;
-	char * buffer;
-};
+	spmembuffer_t * mem;
+} spmemfile_t;
 
 static int spmemfileClose( sqlite3_file * file );
 static int spmemfileRead( sqlite3_file * file, void * buffer, int len, sqlite3_int64 offset );
@@ -87,11 +82,14 @@ int spmemfileClose( sqlite3_file * file )
 	spmemvfsDebug( "call %s( %p )", __func__, memfile );
 
 	if( SQLITE_OPEN_MAIN_DB & memfile->flags ) {
-		memfile->cb.save( memfile->cb.arg, memfile->path, memfile->buffer, memfile->len );
-		memfile->buffer = NULL;
+		// noop
+	} else {
+		if( NULL != memfile->mem ) {
+			if( memfile->mem->data ) free( memfile->mem->data );
+			free( memfile->mem );
+		}
 	}
 
-	if( NULL != memfile->buffer ) free( memfile->buffer );
 	free( memfile->path );
 
 	return SQLITE_OK;
@@ -102,13 +100,13 @@ int spmemfileRead( sqlite3_file * file, void * buffer, int len, sqlite3_int64 of
 	spmemfile_t * memfile = (spmemfile_t*)file;
 
 	spmemvfsDebug( "call %s( %p, ..., %d, %lld ), len %d",
-		__func__, memfile, len, offset, memfile->len );
+		__func__, memfile, len, offset, memfile->mem->used );
 
-	if( ( offset + len ) > memfile->len ) {
+	if( ( offset + len ) > memfile->mem->used ) {
 		return SQLITE_IOERR_SHORT_READ;
 	}
 
-	memcpy( buffer, memfile->buffer + offset, len );
+	memcpy( buffer, memfile->mem->data + offset, len );
 
 	return SQLITE_OK;
 }
@@ -116,24 +114,25 @@ int spmemfileRead( sqlite3_file * file, void * buffer, int len, sqlite3_int64 of
 int spmemfileWrite( sqlite3_file * file, const void * buffer, int len, sqlite3_int64 offset )
 {
 	spmemfile_t * memfile = (spmemfile_t*)file;
+	spmembuffer_t * mem = memfile->mem;
 
 	spmemvfsDebug( "call %s( %p, ..., %d, %lld ), len %d",
-		__func__, memfile, len, offset, memfile->len );
+		__func__, memfile, len, offset, mem->used );
 
-	if( ( offset + len ) > memfile->total ) {
-		int newTotal = 2 * ( offset + len + memfile->total );
-		char * newBuffer = (char*)realloc( memfile->buffer, newTotal );
+	if( ( offset + len ) > mem->total ) {
+		int newTotal = 2 * ( offset + len + mem->total );
+		char * newBuffer = (char*)realloc( mem->data, newTotal );
 		if( NULL == newBuffer ) {
 			return SQLITE_NOMEM;
 		}
 
-		memfile->total = newTotal;
-		memfile->buffer = newBuffer;
+		mem->total = newTotal;
+		mem->data = newBuffer;
 	}
 
-	memcpy( memfile->buffer + offset, buffer, len );
+	memcpy( mem->data + offset, buffer, len );
 
-	memfile->len = SPMEMVFS_MAX( memfile->len, offset + len );
+	mem->used = SPMEMVFS_MAX( mem->used, offset + len );
 
 	return SQLITE_OK;
 }
@@ -144,7 +143,7 @@ int spmemfileTruncate( sqlite3_file * file, sqlite3_int64 size )
 
 	spmemvfsDebug( "call %s( %p )", __func__, memfile );
 
-	memfile->len = SPMEMVFS_MIN( memfile->len, size );
+	memfile->mem->used = SPMEMVFS_MIN( memfile->mem->used, size );
 
 	return SQLITE_OK;
 }
@@ -162,7 +161,7 @@ int spmemfileFileSize( sqlite3_file * file, sqlite3_int64 * size )
 
 	spmemvfsDebug( "call %s( %p )", __func__, memfile );
 
-	* size = memfile->len;
+	* size = memfile->mem->used;
 
 	return SQLITE_OK;
 }
@@ -213,12 +212,16 @@ int spmemfileDeviceCharacteristics( sqlite3_file * file )
 
 //===========================================================================
 
-typedef struct spmemvfs_t spmemvfs_t;
-struct spmemvfs_t {
+typedef struct spmemvfs_cb_t {
+	void * arg;
+	spmembuffer_t * ( * load ) ( void * args, const char * path );
+} spmemvfs_cb_t;
+
+typedef struct spmemvfs_t {
 	sqlite3_vfs base;
 	spmemvfs_cb_t cb;
 	sqlite3_vfs * parent;
-};
+} spmemvfs_t;
 
 static int spmemvfsOpen( sqlite3_vfs * vfs, const char * path, sqlite3_file * file, int flags, int * outflags );
 static int spmemvfsDelete( sqlite3_vfs * vfs, const char * path, int syncDir );
@@ -268,15 +271,15 @@ int spmemvfsOpen( sqlite3_vfs * vfs, const char * path, sqlite3_file * file, int
 	memfile->base.pMethods = &g_spmemfile_io_memthods;
 	memfile->flags = flags;
 
-	memfile->cb = memvfs->cb;
 	memfile->path = strdup( path );
 
 	if( SQLITE_OPEN_MAIN_DB & memfile->flags ) {
-		memfile->buffer = memvfs->cb.load( memvfs->cb.arg, path, &memfile->len );
-		memfile->total = memfile->len;
+		memfile->mem = memvfs->cb.load( memvfs->cb.arg, path );
+	} else {
+		memfile->mem = (spmembuffer_t*)calloc( sizeof( spmembuffer_t ), 1 );
 	}
 
-	return SQLITE_OK;
+	return memfile->mem ? SQLITE_OK : SQLITE_ERROR;
 }
 
 int spmemvfsDelete( sqlite3_vfs * vfs, const char * path, int syncDir )
@@ -357,155 +360,154 @@ int spmemvfs_init( spmemvfs_cb_t * cb )
 
 //===========================================================================
 
-/* base on tsearch to implement a membuffer map */
+typedef struct spmembuffer_link_t {
+	char * path;
+	spmembuffer_t * mem;
+	struct spmembuffer_link_t * next;
+} spmembuffer_link_t;
 
-struct spmembuffer_map_t {
-	void * root;
-	pthread_mutex_t mutex;
-};
-
-typedef struct spmembuffer_t spmembuffer_t;
-
-struct spmembuffer_t {
-	char * key;
-	void * buffer;
-	int len;
-};
-
-static int spmembuffer_cmp( const void * item1, const void * item2 )
+spmembuffer_link_t * spmembuffer_link_remove( spmembuffer_link_t ** head, const char * path )
 {
-	spmembuffer_t * b1 = (spmembuffer_t*)item1;
-	spmembuffer_t * b2 = (spmembuffer_t*)item2;
+	spmembuffer_link_t * ret = NULL;
 
-	return strcmp( b1->key, b2->key );
-}
+	spmembuffer_link_t ** iter = head;
+	for( ; NULL != *iter; ) {
+		spmembuffer_link_t * curr = *iter;
 
-static void spmembuffer_free( void * item )
-{
-	spmembuffer_t * b = (spmembuffer_t*)item;
-
-	free( b->key );
-	free( b->buffer );
-	free( b );
-}
-
-static void spmembuffer_free_action( const void * nodep, const VISIT which, const int depth )
-{
-	spmembuffer_t * b = *(spmembuffer_t**)nodep;
-
-	switch( which ) {
-		case preorder:
+		if( 0 == strcmp( path, curr->path ) ) {
+			ret = curr;
+			*iter = curr->next;
 			break;
-		case endorder:
-			break;
-		case postorder:
-		case leaf:
-			spmembuffer_free( b );
-			free( (void*)nodep );
-			break;
+		} else {
+			iter = &( curr->next );
+		}
 	}
-}
-
-void spmembuffer_map_del( spmembuffer_map_t * themap )
-{
-
-#ifdef __USE_GNU
-	tdestroy( themap->root, spmembuffer_free );
-#else
-	twalk( themap->root, spmembuffer_free_action );
-#endif
-
-	pthread_mutex_destroy( &themap->mutex );
-
-	free( themap );
-}
-
-spmembuffer_map_t * spmembuffer_map_new()
-{
-	spmembuffer_map_t * themap = (spmembuffer_map_t*)calloc( sizeof( spmembuffer_map_t ), 1 );
-
-	pthread_mutex_init( &themap->mutex, NULL );
-
-	return themap;
-}
-
-int spmembuffer_map_put( spmembuffer_map_t * themap, const char * key, void * buffer, int len )
-{
-	int ret = 0;
-
-	spmembuffer_t * olditem = NULL;
-	spmembuffer_t * item = (spmembuffer_t*)calloc( sizeof( spmembuffer_t ), 1 );
-
-	item->key = strdup( key );
-	item->buffer = buffer;
-	item->len = len;
-
-	pthread_mutex_lock( &themap->mutex );
-
-	olditem = *(spmembuffer_t**)tsearch( item, &themap->root, spmembuffer_cmp );
-
-	if( olditem != item ) {
-		/* update olditem */
-
-		free( olditem->buffer );
-
-		olditem->buffer = buffer;
-		olditem->len = len;
-
-		free( item->key );
-		free( item );
-
-		ret = 1;
-	}
-
-	pthread_mutex_unlock( &themap->mutex );
 
 	return ret;
 }
 
-void * spmembuffer_map_take( spmembuffer_map_t * themap, const char * key, int * len )
+void spmembuffer_link_free( spmembuffer_link_t * iter )
 {
-	void * buffer = NULL, * tmp = NULL;
-	spmembuffer_t keyitem, * olditem = NULL;
-
-	keyitem.key = (char*)key;
-	*len = 0;
-
-	pthread_mutex_lock( &themap->mutex );
-
-	tmp = tfind( &keyitem, &themap->root, spmembuffer_cmp );
-
-	if( NULL != tmp ) {
-		olditem = *(spmembuffer_t**)tmp;
-
-		tdelete( &keyitem, &themap->root, spmembuffer_cmp );
-
-		if( NULL != olditem ) {
-			buffer = olditem->buffer;
-			*len = olditem->len;
-
-			free( olditem->key );
-			free( olditem );
-		}
-	}
-
-	pthread_mutex_unlock( &themap->mutex );
-
-	return buffer;
+	free( iter->path );
+	free( iter->mem->data );
+	free( iter->mem );
+	free( iter );
 }
 
-int spmembuffer_map_has( spmembuffer_map_t * themap, const char * key )
+//===========================================================================
+
+typedef struct spmemvfs_env_t {
+	spmembuffer_link_t * head;
+	pthread_mutex_t mutex;
+} spmemvfs_env_t;
+
+static spmemvfs_env_t * g_spmemvfs_env = NULL;
+
+static spmembuffer_t * load_cb( void * arg, const char * path )
+{
+	spmembuffer_t * ret = NULL;
+
+	spmemvfs_env_t * env = (spmemvfs_env_t*)arg;
+
+	pthread_mutex_lock( &( env->mutex ) );
+	{
+		spmembuffer_link_t * toFind = spmembuffer_link_remove( &( env->head ), path );
+
+		if( NULL != toFind ) {
+			ret = toFind->mem;
+			free( toFind->path );
+			free( toFind );
+		}
+	}
+	pthread_mutex_unlock( &( env->mutex ) );
+
+	return ret;
+}
+
+int spmemvfs_env_init()
 {
 	int ret = 0;
-	spmembuffer_t keyitem;
 
-	keyitem.key = (char*)key;
+	if( NULL == g_spmemvfs_env ) {
+		g_spmemvfs_env = (spmemvfs_env_t*)calloc( sizeof( spmemvfs_env_t ), 1 );
+		pthread_mutex_init( &(g_spmemvfs_env->mutex), NULL );
 
-	pthread_mutex_lock( &themap->mutex );
+		spmemvfs_cb_t cb = { g_spmemvfs_env, load_cb };
+		ret = spmemvfs_init( &cb );
+	}
 
-	ret = ( NULL != tfind( &keyitem, &themap->root, spmembuffer_cmp ) );
+	return ret;
+}
 
-	pthread_mutex_unlock( &themap->mutex );
+void spmemvfs_env_fini()
+{
+	if( NULL != g_spmemvfs_env ) {
+		sqlite3_vfs_unregister( (sqlite3_vfs*)&g_spmemvfs );
+
+		pthread_mutex_destroy( &( g_spmemvfs_env->mutex ) );
+
+		spmembuffer_link_t * iter = g_spmemvfs_env->head;
+		for( ; NULL != iter; ) {
+			spmembuffer_link_t * next = iter->next;
+
+			spmembuffer_link_free( iter );
+
+			iter = next;
+		}
+
+		free( g_spmemvfs_env );
+		g_spmemvfs_env = NULL;
+	}
+}
+
+int spmemvfs_open_db( spmemvfs_db_t * db, const char * path, spmembuffer_t * mem )
+{
+	memset( db, 0, sizeof( spmemvfs_db_t ) );
+
+	spmembuffer_link_t * iter = (spmembuffer_link_t*)calloc( sizeof( spmembuffer_link_t ), 1 );
+	iter->path = strdup( path );
+	iter->mem = mem;
+
+	int ret = 0;
+
+	pthread_mutex_lock( &(g_spmemvfs_env->mutex) );
+	{
+		iter->next = g_spmemvfs_env->head;
+		g_spmemvfs_env->head = iter;
+	}
+	pthread_mutex_unlock( &(g_spmemvfs_env->mutex) );
+
+	ret = sqlite3_open_v2( path, &(db->handle),
+			SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, SPMEMVFS_NAME );
+
+	if( 0 == ret ) {
+		db->mem = mem;
+	} else {
+		pthread_mutex_lock( &(g_spmemvfs_env->mutex) );
+		{
+			iter = spmembuffer_link_remove( &(g_spmemvfs_env->head), path );
+			if( NULL != iter ) spmembuffer_link_free( iter );
+		}
+		pthread_mutex_unlock( &(g_spmemvfs_env->mutex) );
+	}
+
+	return ret;
+}
+
+int spmemvfs_close_db( spmemvfs_db_t * db )
+{
+	int ret = 0;
+
+	if( NULL != db->handle ) {
+		ret = sqlite3_close( db->handle );
+		db->handle = NULL;
+	}
+
+	if( NULL != db->mem ) {
+		if( NULL != db->mem->data ) free( db->mem->data );
+		free( db->mem );
+		db->mem = NULL;
+	}
 
 	return ret;
 }

@@ -10,12 +10,19 @@
 
 #include "sphivemanager.hpp"
 #include "sphivemsg.hpp"
+#include "sphiveconfig.hpp"
+
+#include "spmemvfs.h"
 
 #include "spjson/spjsonnode.hpp"
 #include "spjson/spjsonrpc.hpp"
 #include "spjson/spjsonutils.hpp"
 
-void testExecute( const char * buffer, int len )
+#include "spnetkit/spnklock.hpp"
+#include "spnetkit/spnklog.hpp"
+#include "spnetkit/spnkporting.hpp"
+
+void testExecute( SP_HiveManager * manager, const char * buffer, int len )
 {
 	SP_JsonRpcReqObject rpcReq( buffer, len );
 
@@ -24,13 +31,9 @@ void testExecute( const char * buffer, int len )
 		return;
 	}
 
-	SP_HiveManager manager;
-
-	manager.init( "./data" );
-
 	SP_JsonArrayNode result;
 
-	manager.execute( &rpcReq, &result );
+	manager->execute( &rpcReq, &result );
 
 	SP_JsonStringBuffer respBuffer;
 	SP_JsonRpcUtils::toRespBuffer( rpcReq.getID(), &result,
@@ -62,9 +65,26 @@ int main( int argc, char * argv[] )
 	fclose ( fp );
 	source[ aStat.st_size ] = '\0';
 
-	testExecute( source, aStat.st_size );
+	int logopt = LOG_CONS | LOG_PID | LOG_PERROR;
+
+	SP_NKLog::setLogLevel( 7 );
+	openlog( "testmanager", logopt, LOG_USER );
+
+	spmemvfs_env_init();
+
+	SP_HiveConfig config;
+	config.init( "./sphivedbsvr.ini" );
+
+	SP_NKTokenLockManager lockManager;
+
+	SP_HiveManager manager;
+	manager.init( &config, &lockManager );
+
+	testExecute( &manager, source, aStat.st_size );
 
 	free( source );
+
+	spmemvfs_env_fini();
 
 	return 0;
 }

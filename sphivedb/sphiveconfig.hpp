@@ -20,6 +20,8 @@ public:
 
 	const char * getDataDir();
 
+	int getLockTimeoutSeconds();
+
 private:
 	int mMaxConnections;
 	int mSocketTimeout;
@@ -27,6 +29,8 @@ private:
 	int mMaxReqQueueSize;
 
 	char mDataDir[ 256 ];
+
+	int mLockTimeoutSeconds;
 };
 
 #endif

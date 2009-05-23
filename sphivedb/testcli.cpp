@@ -84,7 +84,7 @@ int main( int argc, char * argv[] )
 	SP_NKStringList sql;
 	sql.append( "create table if not exists addrbook ( id int, addr varchar(32) )" );
 	sql.append( "insert into addrbook values ( 1, \"abc\" )" );
-	sql.append( "select * from addrbook" );
+	sql.append( "select rowid, * from addrbook" );
 
 	SP_NKTcpSocket socket( host, atoi( port ) );
 

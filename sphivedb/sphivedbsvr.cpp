@@ -9,10 +9,12 @@
 #include <string.h>
 #include <signal.h>
 #include <assert.h>
+#include <fcntl.h>
 
 #include "sphivehandler.hpp"
 #include "sphivemanager.hpp"
 #include "sphiveconfig.hpp"
+#include "spmemvfs.h"
 
 #include "spserver/spserver.hpp"
 #include "spserver/splfserver.hpp"
@@ -20,7 +22,7 @@
 #include "spserver/spioutils.hpp"
 
 #include "spnetkit/spnklog.hpp"
-
+#include "spnetkit/spnklock.hpp"
 
 void showUsage( const char * program )
 {
@@ -95,8 +97,27 @@ int main( int argc, char * argv[] )
 	SP_HiveConfig config;
 	config.init( configFile );
 
+	if( 0 != access( config.getDataDir(), F_OK ) ) {
+		if( 0 != mkdir( config.getDataDir(), 0700 ) ) {
+			SP_NKLog::log( LOG_ERR, "Cannot create data dir, %s", config.getDataDir() );
+			return -1;
+		}
+	}
+
+	if( 0 != access( config.getDataDir(), W_OK | R_OK | X_OK ) ) {
+		SP_NKLog::log( LOG_ERR, "Cannot access data dir, %s", config.getDataDir() );
+		return -1;
+	}
+
+	spmemvfs_env_init();
+
+	SP_NKTokenLockManager lockManager;
+
 	SP_HiveManager manager;
-	manager.init( config.getDataDir() );
+	if( 0 != manager.init( &config, &lockManager ) ) {
+		SP_NKLog::log( LOG_ERR, "Cannot init manager" );
+		return -1;
+	}
 
 	SP_HttpHandlerAdapterFactory * factory =
 			new SP_HttpHandlerAdapterFactory( new SP_HiveHandlerFactory( &manager ) );
@@ -120,6 +141,8 @@ int main( int argc, char * argv[] )
 
 		server.runForever();
 	}
+
+	spmemvfs_env_fini();
 
 	sp_closelog();
 
