@@ -27,17 +27,25 @@ SP_HiveManager :: SP_HiveManager()
 {
 	mLockManager = NULL;
 	mConfig = NULL;
-	mDbm = NULL;
+	mDbmList = NULL;
 }
 
 SP_HiveManager :: ~SP_HiveManager()
 {
-	if( NULL != mDbm ) {
-		sp_tcadbclose( mDbm );
-		sp_tcadbdel( mDbm );
+	if( NULL != mDbmList ) {
+		int count = mConfig->getDBFileEnd() - mConfig->getDBFileBegin() + 1;
+
+		for( int i = 0; i < count; i++ ) {
+			if( NULL != mDbmList[i] ) {
+				sp_tcadbclose( mDbmList[i] );
+				sp_tcadbdel( mDbmList[i] );
+			}
+		}
+
+		free( mDbmList );
 	}
 
-	mDbm = NULL;
+	mDbmList = NULL;
 }
 
 int SP_HiveManager :: init( SP_HiveConfig * config, SP_NKTokenLockManager * lockManager )
@@ -45,19 +53,93 @@ int SP_HiveManager :: init( SP_HiveConfig * config, SP_NKTokenLockManager * lock
 	mConfig = config;
 	mLockManager = lockManager;
 
-	char name[ 256 ] = { 0 };
+	int ret = 0;
 
-	snprintf( name, sizeof( name ), "%s/sphive0.tch", config->getDataDir() );
+	int count = mConfig->getDBFileEnd() - mConfig->getDBFileBegin() + 1;
+	mDbmList = (void**)calloc( sizeof( void * ), count );
 
-	mDbm = sp_tcadbnew();
+	for( int i = 0; i < count; i++ ) {
+		char name[ 256 ] = { 0 };
 
-	if( ! sp_tcadbopen( mDbm, name ) ) {
-		sp_tcadbdel( mDbm );
-		mDbm = NULL;
-		SP_NKLog::log( LOG_ERR, "ERROR: sp_tcadbopen fail" );
+		snprintf( name, sizeof( name ), "%s/sphive%d.tch",
+				config->getDataDir(), i + mConfig->getDBFileBegin() );
+
+		void * adb = sp_tcadbnew();
+		if( ! sp_tcadbopen( adb, name ) ) {
+			sp_tcadbdel( adb );
+			SP_NKLog::log( LOG_ERR, "ERROR: sp_tcadbopen fail" );
+
+			ret = -1;
+			break;
+		}
+
+		mDbmList[i] = adb;
 	}
 
-	return NULL != mDbm ? 0 : -1;
+	return ret;
+}
+
+int SP_HiveManager :: checkReq( SP_HiveReqObject * reqObject )
+{
+	int dbfile = reqObject->getDBFile();
+
+	if( dbfile < mConfig->getDBFileBegin() || dbfile > mConfig->getDBFileEnd() ) {
+		SP_NKLog::log( LOG_ERR, "ERROR: invalid dbfile, %d no in [%d, %d]",
+				dbfile, mConfig->getDBFileBegin(), mConfig->getDBFileEnd() );
+		return -1;
+	}
+
+	if( NULL == mDbmList || NULL == mDbmList[ dbfile - mConfig->getDBFileBegin() ] ) {
+		SP_NKLog::log( LOG_ERR, "ERROR: server internal error, invalid status" );
+		return -1;
+	}
+
+	const char * dbname = reqObject->getDBName();
+
+	const char * ddl = mConfig->getDDL( dbname );
+
+	if( NULL == ddl ) {
+		SP_NKLog::log( LOG_ERR, "ERROR: invalid dbname %s, cannot find ddl", dbname );
+		return -1;
+	}
+
+	return 0;
+}
+
+int SP_HiveManager :: load( void * dbm, const char * path, spmemvfs_db_t * db, const char * ddl )
+{
+	spmembuffer_t * mem = (spmembuffer_t*)calloc( sizeof( spmembuffer_t ), 1 );
+
+	int vlen = 0;
+	void * vbuf = sp_tcadbget( dbm, path, strlen( path ), &vlen );
+
+	if( NULL != vbuf ) {
+		mem->data = (char*)vbuf;
+		mem->used = mem->total = vlen;
+	}
+
+	if( 0 != spmemvfs_open_db( db, path, mem ) ) {
+		SP_NKLog::log( LOG_ERR, "ERROR: cannot open db, %s", path );
+		return -1;
+	}
+
+	if( 0 == vlen ) {
+		char * errmsg = NULL;
+
+		int dbRet = sqlite3_exec( db->handle, ddl, NULL, NULL, &errmsg );
+
+		if( 0 != dbRet ) {
+			SP_NKLog::log( LOG_ERR, "ERROR: sqlite3_exec(%s) = %d, %s",
+					ddl, dbRet, errmsg ? errmsg : "NULL" );
+			if( NULL != errmsg ) sqlite3_free( errmsg );
+
+			spmemvfs_close_db( db );
+
+			return -1;
+		}
+	}
+
+	return 0;
 }
 
 int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * result )
@@ -65,7 +147,18 @@ int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * 
 	int ret = 0;
 
 	SP_HiveReqObject reqObject( rpcReq );
-	const char * path = reqObject.getPath();
+
+	if( 0 != checkReq( &reqObject ) ) return -1;
+
+	int dbfile = reqObject.getDBFile();
+	const char * user = reqObject.getUser();
+	const char * dbname = reqObject.getDBName();
+
+	void * dbm = mDbmList[ dbfile - mConfig->getDBFileBegin() ];
+	const char * ddl = mConfig->getDDL( dbname );
+
+	char path[ 256 ] = { 0 };
+	snprintf( path, sizeof( path ), "%s/%s", user, dbname );
 
 	SP_NKTokenLockGuard lockGuard( mLockManager );
 
@@ -76,25 +169,12 @@ int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * 
 
 	spmemvfs_db_t * db = (spmemvfs_db_t*)calloc( sizeof( spmemvfs_db_t ), 1 );
 
-	// load buffer from cabinet, and open db
-	{
-		spmembuffer_t * mem = (spmembuffer_t*)calloc( sizeof( spmembuffer_t ), 1 );
-
-		int vlen = 0;
-		void * vbuf = sp_tcadbget( mDbm, path, strlen( path ), &vlen );
-
-		if( NULL != vbuf ) {
-			mem->data = (char*)vbuf;
-			mem->used = mem->total = vlen;
-		}
-
-		spmemvfs_open_db( db, path, mem );
-	}
+	ret = load( dbm, path, db, ddl );
 
 	int hasUpdate = 0;
 
 	// execute sql script
-	{
+	if( 0 == ret ) {
 		int dbRet = 0;
 
 		for( int i = 0; i < reqObject.getSqlCount(); i++ ) {
@@ -115,19 +195,22 @@ int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * 
 	}
 
 	// write buffer to cabinet
-	{
+	if( 0 == ret ) {
 		if( NULL != db->mem->data ) {
 			if( 0 == ret && hasUpdate ) {
-				if( ! sp_tcadbput( mDbm, path, strlen( path ), db->mem->data, db->mem->used ) ) {
+				if( ! sp_tcadbput( dbm, path, strlen( path ), db->mem->data, db->mem->used ) ) {
 					SP_NKLog::log( LOG_ERR, "ERROR: tcadbput fail" );
 					ret = -1;
 				}
 			}
 		}
-
-		spmemvfs_close_db( db );
-		free( db );
 	}
+
+	spmemvfs_close_db( db );
+	free( db );
+
+	SP_NKLog::log( LOG_DEBUG, "DEBUG: execute( %d, %s, %s, {%d} ) = %d",
+			dbfile, user, dbname,  reqObject.getSqlCount(), ret );
 
 	return ret;
 }
@@ -181,6 +264,8 @@ int SP_HiveManager :: doSelect( sqlite3 * handle, const char * sql, SP_JsonArray
 
 		rs->addValue( rowPair );
 	}
+
+	if( 0 != dbRet) return dbRet;
 
 	SP_JsonPairNode * typePair = new SP_JsonPairNode();
 	{

@@ -29,17 +29,30 @@ SP_HiveDBProtocol :: SP_HiveDBProtocol()
 {
 }
 
-SP_HiveRespObject * SP_HiveDBProtocol :: execute( const char * path, SP_NKStringList * sql )
+SP_HiveRespObject * SP_HiveDBProtocol :: execute( int dbfile, const char * user,
+		const char * dbname, SP_NKStringList * sql )
 {
 	SP_JsonArrayNode params;
 	{
 		SP_JsonObjectNode * args = new SP_JsonObjectNode();
 
-		SP_JsonPairNode * pathPair = new SP_JsonPairNode();
-		pathPair->setName( "path" );
-		pathPair->setValue( new SP_JsonStringNode( path ) );
+		SP_JsonPairNode * dbfilePair = new SP_JsonPairNode();
+		dbfilePair->setName( "dbfile" );
+		dbfilePair->setValue( new SP_JsonIntNode( dbfile ) );
 
-		args->addValue( pathPair );
+		args->addValue( dbfilePair );
+
+		SP_JsonPairNode * userPair = new SP_JsonPairNode();
+		userPair->setName( "user" );
+		userPair->setValue( new SP_JsonStringNode( user ) );
+
+		args->addValue( userPair );
+
+		SP_JsonPairNode * dbnamePair = new SP_JsonPairNode();
+		dbnamePair->setName( "dbname" );
+		dbnamePair->setValue( new SP_JsonStringNode( dbname ) );
+
+		args->addValue( dbnamePair );
 
 		SP_JsonArrayNode * sqlNode = new SP_JsonArrayNode();
 
@@ -58,7 +71,7 @@ SP_HiveRespObject * SP_HiveDBProtocol :: execute( const char * path, SP_NKString
 
 	SP_JsonStringBuffer buffer;
 
-	SP_JsonRpcUtils::toReqBuffer( "execute", path, &params, &buffer );
+	SP_JsonRpcUtils::toReqBuffer( "execute", user, &params, &buffer );
 
 	SP_NKHttpRequest httpReq;
 	{

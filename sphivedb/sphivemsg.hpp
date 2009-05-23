@@ -17,7 +17,11 @@ public:
 
 	const char * verify();
 
-	const char * getPath();
+	int getDBFile();
+
+	const char * getUser();
+
+	const char * getDBName();
 
 	int getSqlCount();
 

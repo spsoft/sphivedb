@@ -82,7 +82,6 @@ int main( int argc, char * argv[] )
 	}
 
 	SP_NKStringList sql;
-	sql.append( "create table if not exists addrbook ( id int, addr varchar(32) )" );
 	sql.append( "insert into addrbook values ( 1, \"abc\" )" );
 	sql.append( "select rowid, * from addrbook" );
 
@@ -90,7 +89,9 @@ int main( int argc, char * argv[] )
 
 	SP_HiveDBProtocol protocol( &socket, 0 );
 
-	SP_HiveRespObject * resp = protocol.execute( "foobar/addrbook", &sql );
+	int dbfile = 19;
+
+	SP_HiveRespObject * resp = protocol.execute( dbfile, "stephen", "addrbook", &sql );
 
 	if( NULL != resp ) {
 		if( 0 == resp->getErrorCode() ) {

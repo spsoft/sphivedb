@@ -24,7 +24,9 @@ void testReq( const char * buffer, int len )
 
 	SP_HiveReqObject req( &inner );
 
-	printf( "path %s\n", req.getPath() );
+	printf( "dbfile %d\n", req.getDBFile() );
+	printf( "user %s\n", req.getUser() );
+	printf( "dbname %s\n", req.getDBName() );
 	printf( "sql.count %d\n", req.getSqlCount() );
 
 	for( int i = 0; i < req.getSqlCount(); i++ ) {

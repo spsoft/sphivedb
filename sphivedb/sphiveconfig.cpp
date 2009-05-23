@@ -5,18 +5,24 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "sphiveconfig.hpp"
 
 #include "spnetkit/spnkini.hpp"
 #include "spnetkit/spnklog.hpp"
+#include "spnetkit/spnkporting.hpp"
+#include "spnetkit/spnklist.hpp"
+#include "spnetkit/spnkstr.hpp"
 
 SP_HiveConfig :: SP_HiveConfig()
 {
+	mListOfDDL = new SP_NKNameValueList();
 }
 
 SP_HiveConfig :: ~SP_HiveConfig()
 {
+	delete mListOfDDL, mListOfDDL = NULL;
 }
 
 int SP_HiveConfig :: init( const char * configFile )
@@ -34,6 +40,8 @@ int SP_HiveConfig :: init( const char * configFile )
 			SP_NK_INI_ITEM_INT( "Server", "SocketTimeout", mSocketTimeout ),
 
 			SP_NK_INI_ITEM_STR( "Database", "DataDir", mDataDir ),
+			SP_NK_INI_ITEM_INT( "Database", "DBFileBegin", mDBFileBegin ),
+			SP_NK_INI_ITEM_INT( "Database", "DBFileEnd", mDBFileEnd ),
 
 			SP_NK_INI_ITEM_INT( "Option", "LockTimeoutSeconds", mLockTimeoutSeconds ),
 
@@ -50,6 +58,31 @@ int SP_HiveConfig :: init( const char * configFile )
 		if( mLockTimeoutSeconds <= 0 ) mLockTimeoutSeconds = 20;
 
 		SP_NKIniFile::BatchDump( infoArray );
+
+		SP_NKStringList sectionList;
+		iniFile.getSectionNameList( &sectionList );
+
+		for( int i = 0; i < sectionList.getCount(); i++ ) {
+			const char * secName = sectionList.getItem( i );
+
+			char key[ 128 ] = { 0 };
+			SP_NKStr::strlcpy( key, secName, sizeof( key ) );
+			SP_NKStr::toLower( key );
+
+			if( key == strstr( key, "ddl." ) ) {
+				SP_NKStringList list;
+				iniFile.getSection( secName, &list );
+
+				char * text = list.getMerge();
+
+				mListOfDDL->add( key, text );
+
+				SP_NKLog::log( LOG_DEBUG, "INIT: add %s", key );
+
+				free( text );
+			}
+		}
+
 	} else {
 		ret = -1;
 	}
@@ -82,8 +115,28 @@ const char * SP_HiveConfig :: getDataDir()
 	return mDataDir;
 }
 
+int SP_HiveConfig :: getDBFileBegin()
+{
+	return mDBFileBegin;
+}
+
+int SP_HiveConfig :: getDBFileEnd()
+{
+	return mDBFileEnd;
+}
+
 int SP_HiveConfig :: getLockTimeoutSeconds()
 {
 	return mLockTimeoutSeconds;
+}
+
+const char * SP_HiveConfig :: getDDL( const char * dbname )
+{
+	char key[ 128 ] = { 0 };
+	snprintf( key, sizeof( key ), "ddl.%s", dbname );
+
+	SP_NKStr::toLower( key );
+
+	return mListOfDDL->getValue( key );
 }
 
