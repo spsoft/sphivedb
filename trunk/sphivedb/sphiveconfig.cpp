@@ -35,6 +35,8 @@ int SP_HiveConfig :: init( const char * configFile )
 
 			SP_NK_INI_ITEM_STR( "Database", "DataDir", mDataDir ),
 
+			SP_NK_INI_ITEM_INT( "Option", "LockTimeoutSeconds", mLockTimeoutSeconds ),
+
 			SP_NK_INI_ITEM_END
 		};
 
@@ -44,6 +46,8 @@ int SP_HiveConfig :: init( const char * configFile )
 		if( mMaxThreads <= 0 ) mMaxThreads = 10;
 		if( mMaxReqQueueSize <= 0 ) mMaxReqQueueSize = 100;
 		if( mSocketTimeout <= 0 ) mSocketTimeout = 600;
+
+		if( mLockTimeoutSeconds <= 0 ) mLockTimeoutSeconds = 20;
 
 		SP_NKIniFile::BatchDump( infoArray );
 	} else {
@@ -76,5 +80,10 @@ int SP_HiveConfig :: getMaxReqQueueSize()
 const char * SP_HiveConfig :: getDataDir()
 {
 	return mDataDir;
+}
+
+int SP_HiveConfig :: getLockTimeoutSeconds()
+{
+	return mLockTimeoutSeconds;
 }
 

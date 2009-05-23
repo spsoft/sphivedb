@@ -10,37 +10,28 @@
 extern "C" {
 #endif
 
+#include "sqlite3.h"
+
 #define SPMEMVFS_NAME "spmemvfs"
 
-typedef struct spmemvfs_cb_t spmemvfs_cb_t;
+typedef struct spmembuffer_t {
+	char * data;
+	int used;
+	int total;
+} spmembuffer_t;
 
-struct spmemvfs_cb_t {
-	/* arg -- the first argument of load/save */
-	void * arg;
+typedef struct spmemvfs_db_t {
+	sqlite3 * handle;
+	spmembuffer_t * mem;
+} spmemvfs_db_t;
 
-	/* load buffer for db, return the full buffer */
-	void * ( * load ) ( void * arg, const char * path, int * len );
+int spmemvfs_env_init();
 
-	/* save buffer for db */
-	int ( * save ) ( void * arg, const char * path, char * buffer, int len );
-};
+void spmemvfs_env_fini();
 
-int spmemvfs_init( spmemvfs_cb_t * cb );
+int spmemvfs_open_db( spmemvfs_db_t * db, const char * path, spmembuffer_t * mem );
 
-//===========================================================================
-
-typedef struct spmembuffer_map_t spmembuffer_map_t;
-
-spmembuffer_map_t * spmembuffer_map_new();
-
-void spmembuffer_map_del( spmembuffer_map_t * themap );
-
-/* @return 0 : insert, 1 : update */
-int spmembuffer_map_put( spmembuffer_map_t * themap, const char * key, void * buffer, int len );
-
-void * spmembuffer_map_take( spmembuffer_map_t * themap, const char * key, int * len );
-
-int spmembuffer_map_has( spmembuffer_map_t * themap, const char * key );
+int spmemvfs_close_db( spmemvfs_db_t * db );
 
 #ifdef __cplusplus
 }

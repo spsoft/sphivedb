@@ -13,35 +13,27 @@
 
 #include "spmemvfs.h"
 
-#include "sqlite3.h"
-
-void test( const char * path )
+void test( spmemvfs_db_t * db )
 {
-	sqlite3 * dbHandle = NULL;
 	char errcode = 0;
 	int i = 0;
 	int count = 0;
 	sqlite3_stmt * stmt = NULL;
 	const char * sql = NULL;
 
-	errcode = sqlite3_open_v2( path, &dbHandle,
-		SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, SPMEMVFS_NAME );
-
-	printf( "sqlite3_open_v2 %d\n", errcode );
-
-	errcode = sqlite3_exec( dbHandle,
+	errcode = sqlite3_exec( db->handle,
 		"CREATE TABLE user ( name, age )", NULL, NULL, NULL );
 
 	printf( "sqlite3_exec %d\n", errcode );
 
 	sql = "insert into user values ( 'abc', 12 );";
-	errcode = sqlite3_exec( dbHandle, sql, 0, 0, 0 );
+	errcode = sqlite3_exec( db->handle, sql, 0, 0, 0 );
 
-	count = sqlite3_changes( dbHandle );
+	count = sqlite3_changes( db->handle );
 	printf( "sqlite3_changes %d\n", count );
 
 	sql = "select * from user;";
-	errcode = sqlite3_prepare( dbHandle, sql, strlen( sql ), &stmt, NULL );
+	errcode = sqlite3_prepare( db->handle, sql, strlen( sql ), &stmt, NULL );
 
 	printf( "sqlite3_prepare %d, stmt %p\n", errcode, stmt );
 
@@ -71,81 +63,69 @@ void test( const char * path )
 	}
 
 	errcode = sqlite3_finalize( stmt );
-
-	errcode = sqlite3_close( dbHandle );
 }
 
-static void * load( void * arg, const char * path, int * len )
+int readFile( const char * path, spmembuffer_t * mem )
 {
-	spmembuffer_map_t * themap = (spmembuffer_map_t*)arg;
+	int ret = -1;
 
-	char * ret = spmembuffer_map_take( themap, path, len );
+	FILE * fp = fopen( path, "r" );
+	if( NULL != fp ) {
+		struct stat filestat;
+		if( 0 == stat( path, &filestat ) ) {
+			ret = 0;
+
+			mem->total = mem->used = filestat.st_size;
+			mem->data = (char*)malloc( filestat.st_size + 1 );
+			fread( mem->data, filestat.st_size, 1, fp );
+			(mem->data)[ filestat.st_size ] = '\0';
+		} else {
+			printf( "cannot stat file %s\n", path );
+		}
+		fclose( fp );
+	} else {
+		printf( "cannot open file %s\n", path );
+	}
 
 	return ret;
 }
 
-static int save( void * arg, const char * path, char * buffer, int len )
+int writeFile( const char * path, spmembuffer_t * mem )
 {
-	spmembuffer_map_t * themap = (spmembuffer_map_t*)arg;
+	int ret = -1;
 
-	return spmembuffer_map_put( themap, path, buffer, len );
+	FILE * fp = fopen( path, "w" );
+	if( NULL != fp ) {
+		ret = 0;
+		fwrite( mem->data, mem->used, 1, fp );
+		fclose( fp );
+	}
+
+	return ret;
 }
 
 int main( int argc, char * argv[] )
 {
-	spmembuffer_map_t * themap = spmembuffer_map_new();
-
-	spmemvfs_cb_t cb = { themap, load, save };
-
 	const char * path = "abc.db";
 
-	spmemvfs_init( &cb );
+	spmemvfs_env_init();
 
-	// load membuffer from file, put it into themap
-	{
-		char * buffer = NULL;
-		int len = 0;
+	spmemvfs_db_t db;
 
-		FILE * fp = fopen( path, "r" );
-		if( NULL != fp ) {
-			struct stat filestat;
-			if( 0 == stat( path, &filestat ) ) {
-				len = filestat.st_size;
-				buffer = (char*)malloc( filestat.st_size + 1 );
-				fread( buffer, filestat.st_size, 1, fp );
-				buffer[ filestat.st_size ] = '\0';
-			} else {
-				printf( "cannot stat file %s\n", path );
-			}
-			fclose( fp );
-		} else {
-			printf( "cannot open file %s\n", path );
-		}
+	spmembuffer_t * mem = (spmembuffer_t*)calloc( sizeof( spmembuffer_t ), 1 );
 
-		if( NULL != buffer ) {
-			spmembuffer_map_put( themap, path, buffer, len );
-		}
-	}
+	readFile( path, mem );
+	spmemvfs_open_db( &db, path, mem );
 
-	test( path );
+	assert( db.mem == mem );
 
-	// get membuffer from themap, save it to file
-	{
-		int len = 0;
-		char * buffer = (char*)spmembuffer_map_take( themap, path, &len );
+	test( &db );
 
-		if( NULL != buffer ) {
-			FILE * fp = fopen( path, "w" );
-			if( NULL != fp ) {
-				fwrite( buffer, len, 1, fp );
-				fclose( fp );
-			}
+	writeFile( path, db.mem );
 
-			free( buffer );
-		}
-	}
+	spmemvfs_close_db( &db );
 
-	spmembuffer_map_del( themap );
+	spmemvfs_env_fini();
 
 	return 0;
 }

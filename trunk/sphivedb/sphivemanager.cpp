@@ -5,69 +5,56 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include "sphivemanager.hpp"
-#include "spmemvfs.h"
 #include "sphivemsg.hpp"
+#include "sphiveconfig.hpp"
 
-#include "tcadb.h" // tokyocabinet
+#include "spmemvfs.h"
+
+#include "spcabinet.h"
 
 #include "sqlite3.h"
 
 #include "spnetkit/spnklog.hpp"
 #include "spnetkit/spnkporting.hpp"
+#include "spnetkit/spnklock.hpp"
 
 #include "spjson/spjsonnode.hpp"
 
-void * SP_HiveManager :: load( void * arg, const char * path, int * len )
-{
-	spmembuffer_map_t * themap = (spmembuffer_map_t*)arg;
-
-	void * ret = spmembuffer_map_take( themap, path, len );
-
-	return ret;
-}
-
-int SP_HiveManager :: save( void * arg, const char * path, char * buffer, int len )
-{
-	spmembuffer_map_t * themap = (spmembuffer_map_t*)arg;
-
-	return spmembuffer_map_put( themap, path, buffer, len );
-}
-
 SP_HiveManager :: SP_HiveManager()
 {
+	mLockManager = NULL;
+	mConfig = NULL;
 	mDbm = NULL;
-	mBuffMap = NULL;
 }
 
 SP_HiveManager :: ~SP_HiveManager()
 {
-	if( NULL != mDbm ) tcadbdel( (TCADB*) mDbm );
-	mDbm = NULL;
-
-	if( NULL != mBuffMap ) spmembuffer_map_del( mBuffMap );
-	mBuffMap = NULL;
-}
-
-int SP_HiveManager :: init( const char * datadir )
-{
-	char name[ 256 ] = { 0 };
-
-	snprintf( name, sizeof( name ), "%s/sphive0.tch", datadir );
-
-	TCADB * adb = tcadbnew();
-
-	if( tcadbopen( adb, name ) ) {
-		mDbm = adb;
-	} else {
-		tcadbdel( adb );
+	if( NULL != mDbm ) {
+		sp_tcadbclose( mDbm );
+		sp_tcadbdel( mDbm );
 	}
 
-	if( NULL != mDbm ) {
-		mBuffMap = spmembuffer_map_new();
-		spmemvfs_cb_t cb = { mBuffMap, load, save };
-		spmemvfs_init( &cb );
+	mDbm = NULL;
+}
+
+int SP_HiveManager :: init( SP_HiveConfig * config, SP_NKTokenLockManager * lockManager )
+{
+	mConfig = config;
+	mLockManager = lockManager;
+
+	char name[ 256 ] = { 0 };
+
+	snprintf( name, sizeof( name ), "%s/sphive0.tch", config->getDataDir() );
+
+	mDbm = sp_tcadbnew();
+
+	if( ! sp_tcadbopen( mDbm, name ) ) {
+		sp_tcadbdel( mDbm );
+		mDbm = NULL;
+		SP_NKLog::log( LOG_ERR, "ERROR: sp_tcadbopen fail" );
 	}
 
 	return NULL != mDbm ? 0 : -1;
@@ -77,39 +64,46 @@ int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * 
 {
 	int ret = 0;
 
-	TCADB * adb = (TCADB*)mDbm;
-
 	SP_HiveReqObject reqObject( rpcReq );
 	const char * path = reqObject.getPath();
 
-	// TODO: lock the path
+	SP_NKTokenLockGuard lockGuard( mLockManager );
 
-	// read block from dbm
+	if( 0 != lockGuard.lock( path, mConfig->getLockTimeoutSeconds() * 1000 ) ) {
+		SP_NKLog::log( LOG_ERR, "ERROR: Lock %s fail", path );
+		return -1;
+	}
+
+	spmemvfs_db_t * db = (spmemvfs_db_t*)calloc( sizeof( spmemvfs_db_t ), 1 );
+
+	// load buffer from cabinet, and open db
 	{
+		spmembuffer_t * mem = (spmembuffer_t*)calloc( sizeof( spmembuffer_t ), 1 );
+
 		int vlen = 0;
-		void * vbuf = tcadbget( adb, path, strlen( path ), &vlen );
+		void * vbuf = sp_tcadbget( mDbm, path, strlen( path ), &vlen );
 
 		if( NULL != vbuf ) {
-			spmembuffer_map_put( mBuffMap, path, vbuf, vlen );
+			mem->data = (char*)vbuf;
+			mem->used = mem->total = vlen;
 		}
+
+		spmemvfs_open_db( db, path, mem );
 	}
 
 	int hasUpdate = 0;
 
-	// init sqlite3, execute sql script
+	// execute sql script
 	{
-		sqlite3 * dbHandle = NULL;
-
-		int dbRet = sqlite3_open_v2( path, &dbHandle,
-				SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, SPMEMVFS_NAME );
+		int dbRet = 0;
 
 		for( int i = 0; i < reqObject.getSqlCount(); i++ ) {
 			const char * sql = reqObject.getSql( i );
 
 			if( 0 == strncasecmp( "select", sql, 6 ) ) {
-				dbRet = doSelect( dbHandle, sql, result );
+				dbRet = doSelect( db->handle, sql, result );
 			} else {
-				dbRet = doUpdate( dbHandle, sql, result );
+				dbRet = doUpdate( db->handle, sql, result );
 				if( dbRet > 0 ) hasUpdate = 1;
 			}
 
@@ -118,23 +112,21 @@ int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * 
 				break;
 			}
 		}
-
-		dbRet = sqlite3_close( dbHandle );
 	}
 
-	// write block to dbm
+	// write buffer to cabinet
 	{
-		int vlen = 0;
-		char * vbuf = (char*)spmembuffer_map_take( mBuffMap, path, &vlen );
-
-		if( NULL != vbuf ) {
+		if( NULL != db->mem->data ) {
 			if( 0 == ret && hasUpdate ) {
-				if( ! tcadbput( adb, path, strlen( path ), vbuf, vlen ) ) {
+				if( ! sp_tcadbput( mDbm, path, strlen( path ), db->mem->data, db->mem->used ) ) {
 					SP_NKLog::log( LOG_ERR, "ERROR: tcadbput fail" );
+					ret = -1;
 				}
 			}
-			free( vbuf );
 		}
+
+		spmemvfs_close_db( db );
+		free( db );
 	}
 
 	return ret;
@@ -244,8 +236,7 @@ int SP_HiveManager :: doUpdate( sqlite3 * handle, const char * sql, SP_JsonArray
 	}
 
 	int affected = sqlite3_changes( handle );
-
-	SP_JsonObjectNode * rs = new SP_JsonObjectNode();
+	int last_insert_rowid = sqlite3_last_insert_rowid( handle );
 
 	SP_JsonPairNode * rowPair = new SP_JsonPairNode();
 	{
@@ -254,14 +245,15 @@ int SP_HiveManager :: doUpdate( sqlite3 * handle, const char * sql, SP_JsonArray
 		SP_JsonArrayNode * row = new SP_JsonArrayNode();
 
 		SP_JsonIntNode * column = new SP_JsonIntNode( affected );
-
 		row->addValue( column );
+
+		column = new SP_JsonIntNode( last_insert_rowid );
+		row->addValue( column );
+
 		rowList->addValue( row );
 
 		rowPair->setName( "row" );
 		rowPair->setValue( rowList );
-
-		rs->addValue( rowPair );
 	}
 
 	SP_JsonPairNode * typePair = new SP_JsonPairNode();
@@ -269,11 +261,10 @@ int SP_HiveManager :: doUpdate( sqlite3 * handle, const char * sql, SP_JsonArray
 		SP_JsonArrayNode * type = new SP_JsonArrayNode();
 
 		type->addValue( new SP_JsonStringNode( "int" ) );
+		type->addValue( new SP_JsonStringNode( "int" ) );
 
 		typePair->setName( "type" );
 		typePair->setValue( type );
-
-		rs->addValue( typePair );
 	}
 
 	SP_JsonPairNode * namePair = new SP_JsonPairNode();
@@ -281,12 +272,16 @@ int SP_HiveManager :: doUpdate( sqlite3 * handle, const char * sql, SP_JsonArray
 		SP_JsonArrayNode * name = new SP_JsonArrayNode();
 
 		name->addValue( new SP_JsonStringNode( "affected" ) );
+		name->addValue( new SP_JsonStringNode( "last_insert_rowid" ) );
 
 		namePair->setName( "name" );
 		namePair->setValue( name );
-
-		rs->addValue( namePair );
 	}
+
+	SP_JsonObjectNode * rs = new SP_JsonObjectNode();
+	rs->addValue( namePair );
+	rs->addValue( typePair );
+	rs->addValue( rowPair );
 
 	result->addValue( rs );
 

@@ -16,7 +16,7 @@ LDFLAGS += -L../spserver -lspserver -L../spnetkit -lspnetkit \
 
 LIBOBJS = sphivecomm.o sphivemsg.o sphivedbcli.o
 
-SVROBJS = spmemvfs.o sphivehandler.o sphivemanager.o \
+SVROBJS = spmemvfs.o spcabinet.o sphivehandler.o sphivemanager.o \
 		sphiveconfig.o sphivedbsvr.o
 
 TARGET = libsphivedbcli.so sphivedbsvr sqlite
@@ -40,17 +40,19 @@ sqlite: sqlite3shell.o sqlite3.o
 	$(LINKER) -o $@ $^ -lpthread -lrt -ldl
 
 testmemvfs: spmemvfs.o testmemvfs.o sqlite3.o
-	$(LINKER) -o $@ $^ -lstdc++ -lpthread -lrt -ldl
+	$(LINKER) -o $@ $^ -lpthread -lrt -ldl
 
 testmsg: sphivecomm.o sphivemsg.o testmsg.o sqlite3.o
 	$(LINKER) -o $@ $^ $(LDFLAGS)
 
 testmanager: testmanager.o sphivemanager.o sphivemsg.o \
-		sphivecomm.o spmemvfs.o sqlite3.o
+		sphiveconfig.o sphivecomm.o spcabinet.o spmemvfs.o sqlite3.o
 	$(LINKER) -o $@ $^ $(LDFLAGS)
 
 testcli: testcli.o
 	$(LINKER) -o $@ $^ $(LDFLAGS) -L. -lsphivedbcli
+
+spcabinet.o: CFLAGS += -std=c99
 
 clean:
 	@( $(RM) *.o vgcore.* core core.* $(TARGET) $(TEST_TARGET) )
