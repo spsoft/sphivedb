@@ -1,0 +1,43 @@
+                             Building
+
+1.libevent
+
+Before building sphivedb, libevent must been installed.
+
+You can donwload libevent from its home page:
+
+	http://www.monkey.org/~provos/libevent/
+
+Edit spspserver/Makefile to specify the path of libevent:
+
+	LIBEVENT_INCL = -I<path_to_libevent_include>
+	LIBEVENT_LIB  = -L<path_to_libevent_library> -levent
+
+Edit sphivedb/Makefile to specify the path of libevent:
+
+	LIBEVENT_LIB  = -L<path_to_libevent_library> -levent
+
+2.Tokyo Cabinet
+
+Before building sphivedb, Tokyo Cabinet must been installed.
+
+You can donwload Tokyo Cabinet from its home page:
+
+	http://tokyocabinet.sourceforge.net/
+
+Edit sphivedb/Makefile to specify the path of Tokyo Cabinet:
+
+	TC_INCL = -I<path_to_tc_include>
+	TC_LIB  = -L<path_to_tc_library> -ltokyocabinet
+
+3.sphivedb
+
+To build sphivedb, type
+
+$ make
+
+This will build three programs:
+	* sphivedbsvr         -- Server Program
+	* libsphivedbcli.so   -- Client Library
+	* testcli             -- test tools
+
