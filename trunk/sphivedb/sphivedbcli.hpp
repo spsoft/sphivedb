@@ -20,7 +20,8 @@ public:
 
 	SP_HiveDBProtocol();
 
-	SP_HiveRespObject * execute( const char * path, SP_NKStringList * sql );
+	SP_HiveRespObject * execute( int dbfile, const char * user, const char * dbname,
+			SP_NKStringList * sql );
 
 private:
 	SP_NKSocket * mSocket;

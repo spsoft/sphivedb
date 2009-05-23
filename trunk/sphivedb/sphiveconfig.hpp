@@ -6,6 +6,8 @@
 #ifndef __sphiveconfig_hpp__
 #define __sphiveconfig_hpp__
 
+class SP_NKNameValueList;
+
 class SP_HiveConfig {
 public:
 	SP_HiveConfig();
@@ -19,8 +21,12 @@ public:
 	int getMaxReqQueueSize();
 
 	const char * getDataDir();
+	int getDBFileBegin();
+	int getDBFileEnd();
 
 	int getLockTimeoutSeconds();
+
+	const char * getDDL( const char * dbname );
 
 private:
 	int mMaxConnections;
@@ -29,8 +35,12 @@ private:
 	int mMaxReqQueueSize;
 
 	char mDataDir[ 256 ];
+	int mDBFileBegin;
+	int mDBFileEnd;
 
 	int mLockTimeoutSeconds;
+
+	SP_NKNameValueList * mListOfDDL;
 };
 
 #endif

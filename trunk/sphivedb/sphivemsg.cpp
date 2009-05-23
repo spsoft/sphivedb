@@ -26,22 +26,42 @@ const char * SP_HiveReqObject :: verify()
 {
 	const char * ret = NULL;
 
-	if( NULL == getPath() ) {
-		ret = "invalid params, not path property";
-	} else {
-		if( NULL == getSql(0) ) {
-			ret = "invalid params, not sql property";
-		}
+	if( getDBFile() < 0 ) {
+		ret = "invalid params, not dbfile property";
+	} else if( NULL == getUser() ) {
+		ret = "invalid params, not user property";
+	} else if( NULL == getDBName() ) {
+		ret = "invalid params, not dbname property";
+	} else if( NULL == getSql(0) ) {
+		ret = "invalid params, not sql property";
 	}
 
 	return ret;
 }
 
-const char * SP_HiveReqObject :: getPath()
+int SP_HiveReqObject :: getDBFile()
 {
 	SP_JsonHandle handle( mInner->getParams() );
 
-	SP_JsonStringNode * node = handle.getChild( 0 ).getChild( "path" ).toString();
+	SP_JsonIntNode * node = handle.getChild( 0 ).getChild( "dbfile" ).toInt();
+
+	return NULL != node ? node->getValue() : -1;
+}
+
+const char * SP_HiveReqObject :: getUser()
+{
+	SP_JsonHandle handle( mInner->getParams() );
+
+	SP_JsonStringNode * node = handle.getChild( 0 ).getChild( "user" ).toString();
+
+	return NULL != node ? node->getValue() : NULL;
+}
+
+const char * SP_HiveReqObject :: getDBName()
+{
+	SP_JsonHandle handle( mInner->getParams() );
+
+	SP_JsonStringNode * node = handle.getChild( 0 ).getChild( "dbname" ).toString();
 
 	return NULL != node ? node->getValue() : NULL;
 }
