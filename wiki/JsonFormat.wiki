@@ -1,5 +1,5 @@
 #labels Phase-Design
-#Define the json message of the sphivedb.
+Describe the json message of the sphivedb.
 
 = Introduction =
 
