@@ -1,6 +1,4 @@
 #labels Phase-Design
-Describe the json message of the sphivedb.
-
 = Introduction =
 
 SPHiveDB uses JSONRPC over HTTP, this page describes the request/response message format.
