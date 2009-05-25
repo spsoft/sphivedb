@@ -429,10 +429,14 @@ int spmemvfs_env_init()
 	int ret = 0;
 
 	if( NULL == g_spmemvfs_env ) {
+		spmemvfs_cb_t cb;
+
 		g_spmemvfs_env = (spmemvfs_env_t*)calloc( sizeof( spmemvfs_env_t ), 1 );
 		pthread_mutex_init( &(g_spmemvfs_env->mutex), NULL );
 
-		spmemvfs_cb_t cb = { g_spmemvfs_env, load_cb };
+		cb.arg = g_spmemvfs_env;
+		cb.load = load_cb;
+
 		ret = spmemvfs_init( &cb );
 	}
 
@@ -442,11 +446,13 @@ int spmemvfs_env_init()
 void spmemvfs_env_fini()
 {
 	if( NULL != g_spmemvfs_env ) {
+		spmembuffer_link_t * iter = NULL;
+
 		sqlite3_vfs_unregister( (sqlite3_vfs*)&g_spmemvfs );
 
 		pthread_mutex_destroy( &( g_spmemvfs_env->mutex ) );
 
-		spmembuffer_link_t * iter = g_spmemvfs_env->head;
+		iter = g_spmemvfs_env->head;
 		for( ; NULL != iter; ) {
 			spmembuffer_link_t * next = iter->next;
 
@@ -462,13 +468,15 @@ void spmemvfs_env_fini()
 
 int spmemvfs_open_db( spmemvfs_db_t * db, const char * path, spmembuffer_t * mem )
 {
+	int ret = 0;
+
+	spmembuffer_link_t * iter = NULL;
+
 	memset( db, 0, sizeof( spmemvfs_db_t ) );
 
-	spmembuffer_link_t * iter = (spmembuffer_link_t*)calloc( sizeof( spmembuffer_link_t ), 1 );
+	iter = (spmembuffer_link_t*)calloc( sizeof( spmembuffer_link_t ), 1 );
 	iter->path = strdup( path );
 	iter->mem = mem;
-
-	int ret = 0;
 
 	pthread_mutex_lock( &(g_spmemvfs_env->mutex) );
 	{

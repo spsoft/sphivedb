@@ -108,11 +108,11 @@ int main( int argc, char * argv[] )
 {
 	const char * path = "abc.db";
 
-	spmemvfs_env_init();
-
 	spmemvfs_db_t db;
 
 	spmembuffer_t * mem = (spmembuffer_t*)calloc( sizeof( spmembuffer_t ), 1 );
+
+	spmemvfs_env_init();
 
 	readFile( path, mem );
 	spmemvfs_open_db( &db, path, mem );
