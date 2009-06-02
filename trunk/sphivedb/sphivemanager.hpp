@@ -11,6 +11,7 @@ class SP_JsonArrayNode;
 class SP_NKTokenLockManager;
 class SP_HiveConfig;
 class SP_HiveReqObject;
+class SP_HiveFileCache;
 
 typedef struct sqlite3 sqlite3;
 
@@ -27,6 +28,8 @@ public:
 
 private:
 
+	const char * getPath( int dbfile, const char * dbname, char * path, int size );
+
 	int checkReq( SP_HiveReqObject * reqObject );
 
 	static int doSelect( sqlite3 * handle, const char * sql, SP_JsonArrayNode * result );
@@ -38,7 +41,7 @@ private:
 	SP_NKTokenLockManager * mLockManager;
 	SP_HiveConfig * mConfig;
 
-	void ** mDbmList;
+	SP_HiveFileCache * mFileCache;
 };
 
 #endif

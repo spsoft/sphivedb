@@ -10,6 +10,7 @@
 #include "sphivemanager.hpp"
 #include "sphivemsg.hpp"
 #include "sphiveconfig.hpp"
+#include "sphivefile.hpp"
 
 #include "spmemvfs.h"
 
@@ -27,25 +28,12 @@ SP_HiveManager :: SP_HiveManager()
 {
 	mLockManager = NULL;
 	mConfig = NULL;
-	mDbmList = NULL;
+	mFileCache = NULL;
 }
 
 SP_HiveManager :: ~SP_HiveManager()
 {
-	if( NULL != mDbmList ) {
-		int count = mConfig->getDBFileEnd() - mConfig->getDBFileBegin() + 1;
-
-		for( int i = 0; i < count; i++ ) {
-			if( NULL != mDbmList[i] ) {
-				sp_tcadbclose( mDbmList[i] );
-				sp_tcadbdel( mDbmList[i] );
-			}
-		}
-
-		free( mDbmList );
-	}
-
-	mDbmList = NULL;
+	if( NULL != mFileCache ) delete mFileCache, mFileCache = NULL;
 }
 
 int SP_HiveManager :: init( SP_HiveConfig * config, SP_NKTokenLockManager * lockManager )
@@ -55,28 +43,32 @@ int SP_HiveManager :: init( SP_HiveConfig * config, SP_NKTokenLockManager * lock
 
 	int ret = 0;
 
-	int count = mConfig->getDBFileEnd() - mConfig->getDBFileBegin() + 1;
-	mDbmList = (void**)calloc( sizeof( void * ), count );
+	char path[ 256 ] = { 0 };
+	for( int i = mConfig->getDBFileBegin(); i <= mConfig->getDBFileEnd(); i += 100 ) {
+		int index = i / 100;
+		snprintf( path, sizeof( path ), "%s/%d", config->getDataDir(), index );
 
-	for( int i = 0; i < count; i++ ) {
-		char name[ 256 ] = { 0 };
-
-		snprintf( name, sizeof( name ), "%s/sphive%d.tch",
-				config->getDataDir(), i + mConfig->getDBFileBegin() );
-
-		void * adb = sp_tcadbnew();
-		if( ! sp_tcadbopen( adb, name ) ) {
-			sp_tcadbdel( adb );
-			SP_NKLog::log( LOG_ERR, "ERROR: sp_tcadbopen fail" );
-
-			ret = -1;
-			break;
+		if( 0 != access( path, F_OK ) ) {
+			if( 0 == mkdir( path, 0700 ) ) {
+				SP_NKLog::log( LOG_DEBUG, "Create data dir, %s", path );
+			} else {
+				SP_NKLog::log( LOG_ERR, "Cannot create data dir, %s", path );
+				ret = -1;
+			}
 		}
-
-		mDbmList[i] = adb;
 	}
 
+	mFileCache = new SP_HiveFileCache( config->getMaxOpenFiles() );
+
 	return ret;
+}
+
+const char * SP_HiveManager :: getPath( int dbfile, const char * dbname, char * path, int size )
+{
+	snprintf( path, size, "%s/%d/%s.%d.tch", mConfig->getDataDir(),
+			dbfile / 100, dbname, dbfile );
+
+	return path;
 }
 
 int SP_HiveManager :: checkReq( SP_HiveReqObject * reqObject )
@@ -86,11 +78,6 @@ int SP_HiveManager :: checkReq( SP_HiveReqObject * reqObject )
 	if( dbfile < mConfig->getDBFileBegin() || dbfile > mConfig->getDBFileEnd() ) {
 		SP_NKLog::log( LOG_ERR, "ERROR: invalid dbfile, %d no in [%d, %d]",
 				dbfile, mConfig->getDBFileBegin(), mConfig->getDBFileEnd() );
-		return -1;
-	}
-
-	if( NULL == mDbmList || NULL == mDbmList[ dbfile - mConfig->getDBFileBegin() ] ) {
-		SP_NKLog::log( LOG_ERR, "ERROR: server internal error, invalid status" );
 		return -1;
 	}
 
@@ -154,22 +141,33 @@ int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * 
 	const char * user = reqObject.getUser();
 	const char * dbname = reqObject.getDBName();
 
-	void * dbm = mDbmList[ dbfile - mConfig->getDBFileBegin() ];
-	const char * ddl = mConfig->getDDL( dbname );
+	SP_HiveFileCacheGuard fileCacheGuard( mFileCache );
 
-	char path[ 256 ] = { 0 };
-	snprintf( path, sizeof( path ), "%s/%s", user, dbname );
+	SP_HiveFile * file = NULL;
+	{
+		char path[ 256 ] = { 0 };
+		getPath( dbfile, dbname, path, sizeof( path ) );
+
+		file = fileCacheGuard.get( path );
+
+		if( NULL == file ) {
+			SP_NKLog::log( LOG_ERR, "ERROR: get dbm fail, %s", path );
+			return -1;
+		}
+	}
+
+	const char * ddl = mConfig->getDDL( dbname );
 
 	SP_NKTokenLockGuard lockGuard( mLockManager );
 
-	if( 0 != lockGuard.lock( path, mConfig->getLockTimeoutSeconds() * 1000 ) ) {
-		SP_NKLog::log( LOG_ERR, "ERROR: Lock %s fail", path );
+	if( 0 != lockGuard.lock( user, mConfig->getLockTimeoutSeconds() * 1000 ) ) {
+		SP_NKLog::log( LOG_ERR, "ERROR: Lock %s fail", user );
 		return -1;
 	}
 
 	spmemvfs_db_t * db = (spmemvfs_db_t*)calloc( sizeof( spmemvfs_db_t ), 1 );
 
-	ret = load( dbm, path, db, ddl );
+	ret = load( file->getDbm(), user, db, ddl );
 
 	int hasUpdate = 0;
 
@@ -198,7 +196,7 @@ int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * 
 	if( 0 == ret ) {
 		if( NULL != db->mem->data ) {
 			if( 0 == ret && hasUpdate ) {
-				if( ! sp_tcadbput( dbm, path, strlen( path ), db->mem->data, db->mem->used ) ) {
+				if( ! sp_tcadbput( file->getDbm(), user, strlen( user ), db->mem->data, db->mem->used ) ) {
 					SP_NKLog::log( LOG_ERR, "ERROR: tcadbput fail" );
 					ret = -1;
 				}

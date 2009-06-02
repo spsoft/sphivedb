@@ -42,6 +42,7 @@ int SP_HiveConfig :: init( const char * configFile )
 			SP_NK_INI_ITEM_STR( "Database", "DataDir", mDataDir ),
 			SP_NK_INI_ITEM_INT( "Database", "DBFileBegin", mDBFileBegin ),
 			SP_NK_INI_ITEM_INT( "Database", "DBFileEnd", mDBFileEnd ),
+			SP_NK_INI_ITEM_INT( "Database", "MaxOpenFiles", mMaxOpenFiles ),
 
 			SP_NK_INI_ITEM_INT( "Option", "LockTimeoutSeconds", mLockTimeoutSeconds ),
 
@@ -54,6 +55,8 @@ int SP_HiveConfig :: init( const char * configFile )
 		if( mMaxThreads <= 0 ) mMaxThreads = 10;
 		if( mMaxReqQueueSize <= 0 ) mMaxReqQueueSize = 100;
 		if( mSocketTimeout <= 0 ) mSocketTimeout = 600;
+
+		if( mMaxOpenFiles <= 0 ) mMaxOpenFiles = 16;
 
 		if( mLockTimeoutSeconds <= 0 ) mLockTimeoutSeconds = 20;
 
@@ -123,6 +126,11 @@ int SP_HiveConfig :: getDBFileBegin()
 int SP_HiveConfig :: getDBFileEnd()
 {
 	return mDBFileEnd;
+}
+
+int SP_HiveConfig :: getMaxOpenFiles()
+{
+	return mMaxOpenFiles;
 }
 
 int SP_HiveConfig :: getLockTimeoutSeconds()
