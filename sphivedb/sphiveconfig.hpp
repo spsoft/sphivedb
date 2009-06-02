@@ -23,6 +23,7 @@ public:
 	const char * getDataDir();
 	int getDBFileBegin();
 	int getDBFileEnd();
+	int getMaxOpenFiles();
 
 	int getLockTimeoutSeconds();
 
@@ -37,6 +38,7 @@ private:
 	char mDataDir[ 256 ];
 	int mDBFileBegin;
 	int mDBFileEnd;
+	int mMaxOpenFiles;
 
 	int mLockTimeoutSeconds;
 
