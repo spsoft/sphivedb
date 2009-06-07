@@ -11,6 +11,7 @@
 #include "sphivemsg.hpp"
 #include "sphiveconfig.hpp"
 #include "sphivefile.hpp"
+#include "sphiveschema.hpp"
 
 #include "spmemvfs.h"
 
@@ -28,17 +29,21 @@ SP_HiveManager :: SP_HiveManager()
 {
 	mLockManager = NULL;
 	mConfig = NULL;
+	mSchemaManager = NULL;
 	mFileCache = NULL;
 }
 
 SP_HiveManager :: ~SP_HiveManager()
 {
+	if( NULL != mSchemaManager ) delete mSchemaManager, mSchemaManager = NULL;
 	if( NULL != mFileCache ) delete mFileCache, mFileCache = NULL;
 }
 
 int SP_HiveManager :: init( SP_HiveConfig * config, SP_NKTokenLockManager * lockManager )
 {
 	mConfig = config;
+	mSchemaManager = new SP_HiveSchemaManager( mConfig );
+
 	mLockManager = lockManager;
 
 	int ret = 0;
@@ -83,7 +88,7 @@ int SP_HiveManager :: checkReq( SP_HiveReqObject * reqObject )
 
 	const char * dbname = reqObject->getDBName();
 
-	const char * ddl = mConfig->getDDL( dbname );
+	const SP_HiveDDLConfig * ddl = mConfig->getDDL( dbname );
 
 	if( NULL == ddl ) {
 		SP_NKLog::log( LOG_ERR, "ERROR: invalid dbname %s, cannot find ddl", dbname );
@@ -93,7 +98,7 @@ int SP_HiveManager :: checkReq( SP_HiveReqObject * reqObject )
 	return 0;
 }
 
-int SP_HiveManager :: load( void * dbm, const char * path, spmemvfs_db_t * db, const char * ddl )
+int SP_HiveManager :: load( void * dbm, const char * path, spmemvfs_db_t * db, const char * dbname )
 {
 	spmembuffer_t * mem = (spmembuffer_t*)calloc( sizeof( spmembuffer_t ), 1 );
 
@@ -110,23 +115,7 @@ int SP_HiveManager :: load( void * dbm, const char * path, spmemvfs_db_t * db, c
 		return -1;
 	}
 
-	if( 0 == vlen ) {
-		char * errmsg = NULL;
-
-		int dbRet = sqlite3_exec( db->handle, ddl, NULL, NULL, &errmsg );
-
-		if( 0 != dbRet ) {
-			SP_NKLog::log( LOG_ERR, "ERROR: sqlite3_exec(%s) = %d, %s",
-					ddl, dbRet, errmsg ? errmsg : "NULL" );
-			if( NULL != errmsg ) sqlite3_free( errmsg );
-
-			spmemvfs_close_db( db );
-
-			return -1;
-		}
-	}
-
-	return 0;
+	return mSchemaManager->ensureSchema( db->handle, dbname );
 }
 
 int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * result )
@@ -156,8 +145,6 @@ int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * 
 		}
 	}
 
-	const char * ddl = mConfig->getDDL( dbname );
-
 	SP_NKTokenLockGuard lockGuard( mLockManager );
 
 	if( 0 != lockGuard.lock( user, mConfig->getLockTimeoutSeconds() * 1000 ) ) {
@@ -167,7 +154,7 @@ int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * 
 
 	spmemvfs_db_t * db = (spmemvfs_db_t*)calloc( sizeof( spmemvfs_db_t ), 1 );
 
-	ret = load( file->getDbm(), user, db, ddl );
+	ret = load( file->getDbm(), user, db, dbname );
 
 	int hasUpdate = 0;
 
@@ -250,8 +237,13 @@ int SP_HiveManager :: doSelect( sqlite3 * handle, const char * sql, SP_JsonArray
 			for( int i = 0; i < count; i++ ) {
 				const char * value = (char*)sqlite3_column_text( stmt, i );
 
-				SP_JsonStringNode * column = new SP_JsonStringNode( value );
-				row->addValue( column );
+				if( NULL != value ) {
+					SP_JsonStringNode * column = new SP_JsonStringNode( value );
+					row->addValue( column );
+				} else {
+					SP_JsonNullNode * column = new SP_JsonNullNode();
+					row->addValue( column );
+				}
 			}
 			rowList->addValue( row );
 		}
