@@ -17,11 +17,16 @@
 
 SP_HiveConfig :: SP_HiveConfig()
 {
-	mListOfDDL = new SP_NKNameValueList();
+	mListOfDDL = new SP_NKVector();
 }
 
 SP_HiveConfig :: ~SP_HiveConfig()
 {
+	for( int i = 0; i < mListOfDDL->getCount(); i++ ) {
+		SP_HiveDDLConfig * iter = (SP_HiveDDLConfig*)mListOfDDL->getItem( i );
+		delete iter;
+	}
+
 	delete mListOfDDL, mListOfDDL = NULL;
 }
 
@@ -78,9 +83,14 @@ int SP_HiveConfig :: init( const char * configFile )
 
 				char * text = list.getMerge();
 
-				mListOfDDL->add( key, text );
-
-				SP_NKLog::log( LOG_DEBUG, "INIT: add %s", key );
+				SP_HiveDDLConfig * ddl = new SP_HiveDDLConfig();
+				if( 0 == ddl->init( key, text ) ) {
+					mListOfDDL->append( ddl );
+					SP_NKLog::log( LOG_DEBUG, "INIT: add %s", key );
+				} else {
+					delete ddl;
+					SP_NKLog::log( LOG_ERR, "ERROR: invalid sql, [%s]%s", key, text );
+				}
 
 				free( text );
 			}
@@ -138,13 +148,141 @@ int SP_HiveConfig :: getLockTimeoutSeconds()
 	return mLockTimeoutSeconds;
 }
 
-const char * SP_HiveConfig :: getDDL( const char * dbname )
+const SP_HiveDDLConfig * SP_HiveConfig :: getDDL( const char * dbname )
 {
 	char key[ 128 ] = { 0 };
 	snprintf( key, sizeof( key ), "ddl.%s", dbname );
 
 	SP_NKStr::toLower( key );
 
-	return mListOfDDL->getValue( key );
+	int index = -1;
+
+	for( int i = 0; i < mListOfDDL->getCount(); i++ ) {
+		SP_HiveDDLConfig * iter = (SP_HiveDDLConfig*)mListOfDDL->getItem( i );
+
+		if( 0 == strcmp( key, iter->getName() ) ) {
+			index = i;
+			break;
+		}
+	}
+
+	return (SP_HiveDDLConfig*)mListOfDDL->getItem( index );
+}
+
+//===========================================================================
+
+int SP_HiveDDLConfig :: computeColumnCount( const char * sql )
+{
+	int count = 0;
+
+	for( ; '\0' != *sql && '(' != *sql; ) sql++;
+
+	int brackets = 0;
+
+	for( ; '\0' != *sql; sql++ ) {
+		if( '(' == *sql ) brackets++;
+		if( ')' == *sql ) brackets--;
+
+		if( ')' == *sql && 0 == brackets ) break;
+
+		if( ',' == *sql ) count++;
+	}
+
+	return count > 0 ? count + 1 : 0;
+}
+
+SP_HiveDDLConfig :: SP_HiveDDLConfig()
+{
+	mName = NULL;
+	mSql = NULL;
+	mTable = NULL;
+
+	mColumnList = NULL;
+}
+
+SP_HiveDDLConfig :: ~SP_HiveDDLConfig()
+{
+	if( mName ) free( mName ), mName = NULL;
+	if( mSql ) free( mSql ), mSql = NULL;
+	if( mTable ) free( mTable ), mTable = NULL;
+
+	if( NULL != mColumnList ) delete mColumnList, mColumnList = NULL;
+}
+
+const char * SP_HiveDDLConfig :: getName() const
+{
+	return mName;
+}
+
+int SP_HiveDDLConfig :: init( const char * dbname, const char * sql )
+{
+	mName = strdup( dbname );
+	mSql = strdup( sql );
+
+	mColumnList = new SP_NKNameValueList();
+
+	char buff[ 1024 ] = { 0 };
+
+	SP_NKStr::strlcpy( buff, sql, sizeof( buff ) );
+
+	char * pos = strchr( buff, '(' );
+
+	if( NULL != pos ) {
+		for( pos--; pos > buff && isspace( *pos ); pos-- ) *pos = '\0';
+
+		for( ; pos > buff && ( ! isspace( *pos ) ); ) pos--;
+
+		if( '\0' != *pos ) mTable = strdup( isspace( *pos ) ? pos + 1 : pos );
+	}
+
+	pos = strchr( sql, '(' );
+
+	for( ; NULL != pos; ) {
+		SP_NKStr::strlcpy( buff, ++pos, sizeof( buff ) );
+
+		char * end = strchr( buff, ',' );
+		if( NULL == end ) end = strrchr( buff, ')' );
+		if( NULL != end ) *end = '\0';
+
+		char tmp[ 128 ] = { 0 };
+
+		SP_NKStr::getToken( buff, 0, tmp, sizeof( tmp ), 0, (const char **)&end );
+
+		if( '\0' != tmp[0] ) mColumnList->add( tmp, end ? end : "" );
+
+		pos = strchr( pos, ',' );
+	}
+
+	return NULL != mTable && mColumnList->getCount() > 0 ? 0 : -1;
+}
+
+const char * SP_HiveDDLConfig :: getSql() const
+{
+	return mSql;
+}
+
+const char * SP_HiveDDLConfig :: getTable() const
+{
+	return mTable;
+}
+
+int SP_HiveDDLConfig :: getColumnCount() const
+{
+	return mColumnList->getCount();
+}
+
+int SP_HiveDDLConfig :: findColumn( const char * name )
+{
+	return mColumnList->seek( name );
+}
+
+const char * SP_HiveDDLConfig :: getColumnName( int index ) const
+{
+	return mColumnList->getName( index );
+}
+
+const char * SP_HiveDDLConfig :: getColumnType( int index ) const
+{
+	return mColumnList->getValue( index );
 }
 

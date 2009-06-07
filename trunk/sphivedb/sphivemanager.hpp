@@ -8,8 +8,12 @@
 
 class SP_JsonRpcReqObject;
 class SP_JsonArrayNode;
+
 class SP_NKTokenLockManager;
+
 class SP_HiveConfig;
+class SP_HiveSchemaManager;
+
 class SP_HiveReqObject;
 class SP_HiveFileCache;
 
@@ -32,14 +36,15 @@ private:
 
 	int checkReq( SP_HiveReqObject * reqObject );
 
+	int load( void * hivedb, const char * path, spmemvfs_db_t * db, const char * dbname );
+
 	static int doSelect( sqlite3 * handle, const char * sql, SP_JsonArrayNode * result );
 	static int doUpdate( sqlite3 * handle, const char * sql, SP_JsonArrayNode * result );
-
-	static int load( void * hivedb, const char * path, spmemvfs_db_t * db, const char * ddl );
 
 private:
 	SP_NKTokenLockManager * mLockManager;
 	SP_HiveConfig * mConfig;
+	SP_HiveSchemaManager * mSchemaManager;
 
 	SP_HiveFileCache * mFileCache;
 };
