@@ -42,7 +42,10 @@ SP_HiveManager :: ~SP_HiveManager()
 int SP_HiveManager :: init( SP_HiveConfig * config, SP_NKTokenLockManager * lockManager )
 {
 	mConfig = config;
-	mSchemaManager = new SP_HiveSchemaManager( mConfig );
+
+	mSchemaManager = new SP_HiveSchemaManager();
+
+	if( 0 != mSchemaManager->init( config ) ) return -1;
 
 	mLockManager = lockManager;
 
@@ -88,7 +91,7 @@ int SP_HiveManager :: checkReq( SP_HiveReqObject * reqObject )
 
 	const char * dbname = reqObject->getDBName();
 
-	const SP_HiveDDLConfig * ddl = mConfig->getDDL( dbname );
+	const char * ddl = mConfig->getDDL( dbname );
 
 	if( NULL == ddl ) {
 		SP_NKLog::log( LOG_ERR, "ERROR: invalid dbname %s, cannot find ddl", dbname );

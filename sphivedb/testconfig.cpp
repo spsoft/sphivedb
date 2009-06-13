@@ -8,34 +8,26 @@
 
 #include "sphiveconfig.hpp"
 
+#include "spnetkit/spnklog.hpp"
+#include "spserver/spporting.hpp"
+
 int main( int argc, char * argv[] )
 {
 	if( argc < 2 ) {
-		printf( "Usage: %s <ddl>\n", argv[0] );
+		printf( "Usage: %s <config file>\n", argv[0] );
 		exit( -1 );
 	}
 
-	const char * sql = argv[1];
+	const char * configFile = argv[1];
 
-	int ret = SP_HiveDDLConfig::computeColumnCount( sql );
+	int logopt = LOG_CONS | LOG_PID | LOG_PERROR;
 
-	printf( "column.count %d\n", ret );
+	SP_NKLog::setLogLevel( 7 );
+	sp_openlog( "testconfig", logopt, LOG_USER );
 
-	SP_HiveDDLConfig ddlConfig;
+	SP_HiveConfig config;
 
-	ret = ddlConfig.init( "test", sql );
-
-	printf( "init %d\n", ret );
-
-	if( 0 == ret ) {
-		printf( "name %s, table %s, column.count %d\n",
-				ddlConfig.getName(), ddlConfig.getTable(),
-				ddlConfig.getColumnCount() );
-
-		for( int i = 0; i < ddlConfig.getColumnCount(); i++ ) {
-			printf( "%s -> %s\n", ddlConfig.getColumnName( i ), ddlConfig.getColumnType( i ) );
-		}
-	}
+	config.init( configFile );
 
 	return 0;
 }
