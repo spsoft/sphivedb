@@ -28,7 +28,7 @@ int main( int argc, char * argv[] )
 	int logopt = LOG_CONS | LOG_PID | LOG_PERROR;
 
 	SP_NKLog::setLogLevel( 7 );
-	openlog( "testmanager", logopt, LOG_USER );
+	openlog( "testschema", logopt, LOG_USER );
 
 	sqlite3 * handle = NULL;
 
@@ -37,7 +37,8 @@ int main( int argc, char * argv[] )
 	SP_HiveConfig config;
 	config.init( configFile );
 
-	SP_HiveSchemaManager manager( &config );
+	SP_HiveSchemaManager manager;
+	manager.init( &config );
 	manager.ensureSchema( handle, dbname );
 
 	sqlite3_close( handle );
