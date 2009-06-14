@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "spnetkit/spnklog.hpp"
 #include "spnetkit/spnkporting.hpp"
