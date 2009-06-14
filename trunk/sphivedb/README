@@ -9,7 +9,7 @@ designed for the extreme sharding schema -- one sqlite database per user.
 Test example:
 
 bash$ ./sphivedbsvr -p 8080 -f sphivedbsvr.ini
-bash$ ./testcli -h 127.0.0.1 -p 8080 -i 0 -u foobar -n addrbook -s "insert into addrbook values ( 1, \"cde\" ); select * from addrbook;"
+bash$ ./testcli -h 127.0.0.1 -p 8080 -i 0 -u foobar -n addrbook -s "insert into addrbook ( addr ) values ( \"cde\" ); select * from addrbook;"
 
 
 Any and all comments are appreciated.
