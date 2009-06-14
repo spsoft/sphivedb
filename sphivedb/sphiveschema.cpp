@@ -69,8 +69,10 @@ int SP_HiveSchemaManager :: createTable( sqlite3 * handle, const char * sql,
 
 			const char * value = (char*)sqlite3_column_text( stmt, 0 );
 
-			strncpy( table, value, size );
-			table[ size - 1 ] = '\0';
+			if( 0 != strncasecmp( value, "sqlite_", 7 ) ) {
+				strncpy( table, value, size );
+				table[ size - 1 ] = '\0';
+			}
 
 			dbRet = 0;
 		}

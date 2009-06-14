@@ -37,9 +37,10 @@ void getname( sqlite3 * handle, char * name, int size )
 
 			const char * value = (char*)sqlite3_column_text( stmt, 0 );
 
-			strncpy( name, value, size );
-
-			dbRet = 0;
+			if( 0 != strncasecmp( value, "sqlite_", 7 ) ) {
+				strncpy( name, value, size );
+				dbRet = 0;
+			}
 		}
 	}
 
