@@ -11,6 +11,7 @@
 #include "sphivemanager.hpp"
 #include "sphivemsg.hpp"
 #include "sphiveconfig.hpp"
+#include "spdbmstore.hpp"
 
 #include "spmemvfs.h"
 
@@ -77,8 +78,11 @@ int main( int argc, char * argv[] )
 
 	SP_NKTokenLockManager lockManager;
 
+	SP_DbmStoreManager storeManager;
+	storeManager.init( &config );
+
 	SP_HiveManager manager;
-	manager.init( &config, &lockManager );
+	manager.init( &config, &lockManager, &storeManager );
 
 	testExecute( &manager, source, aStat.st_size );
 

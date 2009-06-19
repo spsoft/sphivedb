@@ -17,7 +17,8 @@ LDFLAGS += -L../spserver -lspserver -L../spnetkit -lspnetkit \
 LIBOBJS = sphivecomm.o sphivemsg.o sphivedbcli.o
 
 SVROBJS = spmemvfs.o spcabinet.o sphivehandler.o sphivemanager.o \
-		sphiveconfig.o sphivedbsvr.o sphivefile.o sphiveschema.o
+		sphiveconfig.o sphivedbsvr.o sphiveschema.o \
+		sphivestore.o spdbmstore.o
 
 TARGET = libsphivedbcli.so libsphivedbcli.a sphivedbsvr sqlite
 
@@ -48,7 +49,7 @@ testmsg: sphivecomm.o sphivemsg.o testmsg.o spsqlite.o
 
 testmanager: testmanager.o sphivemanager.o sphivemsg.o \
 		sphiveconfig.o sphivecomm.o spcabinet.o spmemvfs.o spsqlite.o \
-		sphivefile.o sphiveschema.o
+		sphiveschema.o sphivestore.o spdbmstore.o
 	$(LINKER) -o $@ $^ $(LDFLAGS)
 
 testcli: testcli.o
