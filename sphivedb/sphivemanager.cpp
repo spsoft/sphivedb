@@ -10,8 +10,8 @@
 #include "sphivemanager.hpp"
 #include "sphivemsg.hpp"
 #include "sphiveconfig.hpp"
-#include "sphivefile.hpp"
 #include "sphiveschema.hpp"
+#include "sphivestore.hpp"
 
 #include "spmemvfs.h"
 
@@ -28,26 +28,27 @@
 SP_HiveManager :: SP_HiveManager()
 {
 	mLockManager = NULL;
-	mConfig = NULL;
+	mStoreManager = NULL;
 	mSchemaManager = NULL;
-	mFileCache = NULL;
+
+	mConfig = NULL;
 }
 
 SP_HiveManager :: ~SP_HiveManager()
 {
 	if( NULL != mSchemaManager ) delete mSchemaManager, mSchemaManager = NULL;
-	if( NULL != mFileCache ) delete mFileCache, mFileCache = NULL;
 }
 
-int SP_HiveManager :: init( SP_HiveConfig * config, SP_NKTokenLockManager * lockManager )
+int SP_HiveManager :: init( SP_HiveConfig * config, SP_NKTokenLockManager * lockManager,
+		SP_HiveStoreManager * storeManager )
 {
 	mConfig = config;
 
-	mSchemaManager = new SP_HiveSchemaManager();
-
-	if( 0 != mSchemaManager->init( config ) ) return -1;
-
 	mLockManager = lockManager;
+	mStoreManager = storeManager;
+
+	mSchemaManager = new SP_HiveSchemaManager();
+	if( 0 != mSchemaManager->init( config ) ) return -1;
 
 	int ret = 0;
 
@@ -66,17 +67,7 @@ int SP_HiveManager :: init( SP_HiveConfig * config, SP_NKTokenLockManager * lock
 		}
 	}
 
-	mFileCache = new SP_HiveFileCache( config->getMaxOpenFiles() );
-
 	return ret;
-}
-
-const char * SP_HiveManager :: getPath( int dbfile, const char * dbname, char * path, int size )
-{
-	snprintf( path, size, "%s/%d/%s.%d.tch", mConfig->getDataDir(),
-			dbfile / 100, dbname, dbfile );
-
-	return path;
 }
 
 int SP_HiveManager :: checkReq( SP_HiveReqObject * reqObject )
@@ -101,26 +92,6 @@ int SP_HiveManager :: checkReq( SP_HiveReqObject * reqObject )
 	return 0;
 }
 
-int SP_HiveManager :: load( void * dbm, const char * path, spmemvfs_db_t * db, const char * dbname )
-{
-	spmembuffer_t * mem = (spmembuffer_t*)calloc( sizeof( spmembuffer_t ), 1 );
-
-	int vlen = 0;
-	void * vbuf = sp_tcadbget( dbm, path, strlen( path ), &vlen );
-
-	if( NULL != vbuf ) {
-		mem->data = (char*)vbuf;
-		mem->used = mem->total = vlen;
-	}
-
-	if( 0 != spmemvfs_open_db( db, path, mem ) ) {
-		SP_NKLog::log( LOG_ERR, "ERROR: cannot open db, %s", path );
-		return -1;
-	}
-
-	return mSchemaManager->ensureSchema( db->handle, dbname );
-}
-
 int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * result )
 {
 	int ret = 0;
@@ -133,21 +104,6 @@ int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * 
 	const char * user = reqObject.getUser();
 	const char * dbname = reqObject.getDBName();
 
-	SP_HiveFileCacheGuard fileCacheGuard( mFileCache );
-
-	SP_HiveFile * file = NULL;
-	{
-		char path[ 256 ] = { 0 };
-		getPath( dbfile, dbname, path, sizeof( path ) );
-
-		file = fileCacheGuard.get( path );
-
-		if( NULL == file ) {
-			SP_NKLog::log( LOG_ERR, "ERROR: get dbm fail, %s", path );
-			return -1;
-		}
-	}
-
 	SP_NKTokenLockGuard lockGuard( mLockManager );
 
 	if( 0 != lockGuard.lock( user, mConfig->getLockTimeoutSeconds() * 1000 ) ) {
@@ -155,9 +111,13 @@ int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * 
 		return -1;
 	}
 
-	spmemvfs_db_t * db = (spmemvfs_db_t*)calloc( sizeof( spmemvfs_db_t ), 1 );
+	SP_HiveStore store;
 
-	ret = load( file->getDbm(), user, db, dbname );
+	ret = mStoreManager->load( &reqObject, &store );
+
+	if( 0 == ret ) {
+		ret = mSchemaManager->ensureSchema( store.getHandle(), dbname );
+	}
 
 	int hasUpdate = 0;
 
@@ -169,9 +129,9 @@ int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * 
 			const char * sql = reqObject.getSql( i );
 
 			if( 0 == strncasecmp( "select", sql, 6 ) ) {
-				dbRet = doSelect( db->handle, sql, result );
+				dbRet = doSelect( store.getHandle(), sql, result );
 			} else {
-				dbRet = doUpdate( db->handle, sql, result );
+				dbRet = doUpdate( store.getHandle(), sql, result );
 				if( dbRet > 0 ) hasUpdate = 1;
 			}
 
@@ -182,20 +142,11 @@ int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * 
 		}
 	}
 
-	// write buffer to cabinet
-	if( 0 == ret ) {
-		if( NULL != db->mem->data ) {
-			if( 0 == ret && hasUpdate ) {
-				if( ! sp_tcadbput( file->getDbm(), user, strlen( user ), db->mem->data, db->mem->used ) ) {
-					SP_NKLog::log( LOG_ERR, "ERROR: tcadbput fail" );
-					ret = -1;
-				}
-			}
-		}
+	if( 0 == ret && hasUpdate ) {
+		ret = mStoreManager->save( &reqObject, &store );
 	}
 
-	spmemvfs_close_db( db );
-	free( db );
+	mStoreManager->close( &store );
 
 	SP_NKLog::log( LOG_DEBUG, "DEBUG: execute( %d, %s, %s, {%d} ) = %d",
 			dbfile, user, dbname,  reqObject.getSqlCount(), ret );

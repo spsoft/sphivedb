@@ -14,6 +14,8 @@
 #include "sphivehandler.hpp"
 #include "sphivemanager.hpp"
 #include "sphiveconfig.hpp"
+#include "spdbmstore.hpp"
+
 #include "spmemvfs.h"
 
 #include "spserver/spserver.hpp"
@@ -32,7 +34,7 @@ void showUsage( const char * program )
 	printf( "\t-h <ip> listen ip, default is 0.0.0.0\n" );
 	printf( "\t-p <port> listen port\n" );
 	printf( "\t-d run as daemon\n" );
-	printf( "\t-f <config> config file, default is ./spsmtpgate.ini\n" );
+	printf( "\t-f <config> config file, default is ./sphivedbsvr.ini\n" );
 	printf( "\t-s <server mode> hahs/lf, half-async/half-sync, leader/follower, default is hahs\n" );
 	printf( "\t-x <loglevel> syslog level\n" );
 	printf( "\t-v help\n" );
@@ -46,7 +48,7 @@ int main( int argc, char * argv[] )
 	const char * host = "0.0.0.0";
 	int port = 0;
 	const char * serverMode = "hahs";
-	const char * configFile = "spsmtpgate.ini";
+	const char * configFile = "sphivedbsvr.ini";
 	int runAsDaemon = 0;
 	int loglevel = LOG_NOTICE;
 
@@ -113,9 +115,15 @@ int main( int argc, char * argv[] )
 
 	SP_NKTokenLockManager lockManager;
 
+	SP_DbmStoreManager storeManager;
+	if( 0 != storeManager.init( &config ) ) {
+		SP_NKLog::log( LOG_ERR, "Cannot init store manager" );
+		return -1;
+	}
+
 	SP_HiveManager manager;
-	if( 0 != manager.init( &config, &lockManager ) ) {
-		SP_NKLog::log( LOG_ERR, "Cannot init manager" );
+	if( 0 != manager.init( &config, &lockManager, &storeManager ) ) {
+		SP_NKLog::log( LOG_ERR, "Cannot init hive manager" );
 		return -1;
 	}
 

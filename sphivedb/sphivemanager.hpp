@@ -17,6 +17,8 @@ class SP_HiveSchemaManager;
 class SP_HiveReqObject;
 class SP_HiveFileCache;
 
+class SP_HiveStoreManager;
+
 typedef struct sqlite3 sqlite3;
 
 typedef struct spmemvfs_db_t spmemvfs_db_t;
@@ -26,27 +28,24 @@ public:
 	SP_HiveManager();
 	~SP_HiveManager();
 
-	int init( SP_HiveConfig * config, SP_NKTokenLockManager * lockManager );
+	int init( SP_HiveConfig * config, SP_NKTokenLockManager * lockManager,
+			SP_HiveStoreManager * storeManager );
 
 	int execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * result );
 
 private:
 
-	const char * getPath( int dbfile, const char * dbname, char * path, int size );
-
 	int checkReq( SP_HiveReqObject * reqObject );
-
-	int load( void * hivedb, const char * path, spmemvfs_db_t * db, const char * dbname );
 
 	static int doSelect( sqlite3 * handle, const char * sql, SP_JsonArrayNode * result );
 	static int doUpdate( sqlite3 * handle, const char * sql, SP_JsonArrayNode * result );
 
 private:
 	SP_NKTokenLockManager * mLockManager;
-	SP_HiveConfig * mConfig;
+	SP_HiveStoreManager * mStoreManager;
 	SP_HiveSchemaManager * mSchemaManager;
 
-	SP_HiveFileCache * mFileCache;
+	SP_HiveConfig * mConfig;
 };
 
 #endif
