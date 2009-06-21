@@ -37,22 +37,5 @@ public:
 	virtual int close( SP_HiveStore * store ) = 0;
 };
 
-class SP_HiveStoreGuard {
-public:
-	SP_HiveStoreGuard( SP_HiveStoreManager * manager );
-	~SP_HiveStoreGuard();
-
-	SP_HiveStore * get( SP_HiveReqObject * req );
-
-	void setHasUpdate( int hasUpdate );
-
-private:
-	int mHasUpdate;
-	SP_HiveReqObject * mReq;
-
-	SP_HiveStore * mStore;
-	SP_HiveStoreManager * mManager;
-};
-
 #endif
 
