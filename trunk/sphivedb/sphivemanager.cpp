@@ -104,9 +104,12 @@ int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * 
 	const char * user = reqObject.getUser();
 	const char * dbname = reqObject.getDBName();
 
+	char key4lock[ 128 ] = { 0 };
+	snprintf( key4lock, sizeof( key4lock ), "%s/%s", user, dbname );
+
 	SP_NKTokenLockGuard lockGuard( mLockManager );
 
-	if( 0 != lockGuard.lock( user, mConfig->getLockTimeoutSeconds() * 1000 ) ) {
+	if( 0 != lockGuard.lock( key4lock, mConfig->getLockTimeoutSeconds() * 1000 ) ) {
 		SP_NKLog::log( LOG_ERR, "ERROR: Lock %s fail", user );
 		return -1;
 	}
