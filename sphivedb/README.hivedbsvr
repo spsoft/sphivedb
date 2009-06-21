@@ -1,0 +1,18 @@
+                             sphivedbsvr
+
+sphivedbsvr is a server for sqlite database. It use JSON-RPC over HTTP to expose
+a network interface to use SQLite database. It supports combining multiple
+SQLite databases into one file. It also supports the use of multiple files.
+It is designed for the extreme sharding schema -- one SQLite database per user.
+
+Test example:
+
+bash$ ./sphivedbsvr -p 8080 -f sphivedbsvr.ini
+bash$ ./testcli -h 127.0.0.1 -p 8080 -i 0 -u foobar -n addrbook -s "insert into addrbook ( addr ) values ( \"cde\" ); select * from addrbook;"
+
+Any and all comments are appreciated.
+
+Enjoy!
+
+				-- stephen liu <stephen.nil@gmail.com>
+

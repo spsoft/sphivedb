@@ -95,7 +95,10 @@ int main( int argc, char * argv[] )
 	sp_openlog( "spsqlitesvr", logopt, LOG_USER );
 
 	SP_HiveConfig config;
-	config.init( configFile );
+	if( 0 != config.init( configFile ) ) {
+		SP_NKLog::log( LOG_ERR, "Cannot init from %s", configFile );
+		return -1;
+	}
 
 	if( 0 != access( config.getDataDir(), F_OK ) ) {
 		if( 0 != mkdir( config.getDataDir(), 0700 ) ) {
