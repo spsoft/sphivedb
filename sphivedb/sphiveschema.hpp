@@ -10,6 +10,7 @@ typedef struct sqlite3 sqlite3;
 
 class SP_HiveConfig;
 class SP_HiveTableSchema;
+class SP_HiveDBSchema;
 
 class SP_NKNameValueList;
 class SP_NKVector;
@@ -23,18 +24,39 @@ public:
 
 	int ensureSchema( sqlite3 * handle, const char * dbname );
 
-private:
 	static int execWithLog( sqlite3 * handle, const char * sql );
 
+private:
 	static int alterTable( sqlite3 * handle, SP_HiveTableSchema * newTable,
 			SP_HiveTableSchema * oldTable );
 
-	static int createTable( sqlite3 * handle, const char * sql,
-			char * table, int size );
-
-	SP_HiveTableSchema * findTable( const char * dbname );
+	SP_HiveDBSchema * findDB( const char * dbname );
 
 	SP_HiveConfig * mConfig;
+	SP_NKVector * mDBList;
+};
+
+class SP_HiveDBSchema {
+public:
+	SP_HiveDBSchema();
+	~SP_HiveDBSchema();
+
+	int init( const char * dbname, const char * ddl );
+
+	const char * getDBName() const;
+
+	int getTableCount() const;
+	SP_HiveTableSchema * getTable( int index ) const;
+
+	int findTable( const char * tableName );
+
+private:
+
+	int createTable( sqlite3 * handle, const char * sql,
+			char * table, int size );
+
+private:
+	char * mDBName;
 	SP_NKVector * mTableList;
 };
 
@@ -46,11 +68,11 @@ public:
 	SP_HiveTableSchema();
 	~SP_HiveTableSchema();
 
-	int init( sqlite3 * handle, const char * dbname, const char * table );
+	int init( sqlite3 * handle, const char * tableName, const char * ddl );
 
-	const char * getDbname() const;
+	const char * getTableName() const;
 
-	const char * getTable() const;
+	const char * getDDL() const;
 
 	int getColumnCount() const;
 
@@ -61,7 +83,8 @@ public:
 	const char * getColumnDefine( int index ) const;
 
 private:
-	char * mDbname, * mTable;
+	char * mTableName;
+	char * mDDL;
 	SP_NKNameValueList * mColumnList;
 };
 

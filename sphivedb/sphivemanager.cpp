@@ -13,10 +13,6 @@
 #include "sphiveschema.hpp"
 #include "sphivestore.hpp"
 
-#include "spmemvfs.h"
-
-#include "spcabinet.h"
-
 #include "sqlite3.h"
 
 #include "spnetkit/spnklog.hpp"
@@ -128,6 +124,8 @@ int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * 
 	if( 0 == ret ) {
 		int dbRet = 0;
 
+		dbRet = SP_HiveSchemaManager::execWithLog( store.getHandle(), "BEGIN" );
+
 		for( int i = 0; i < reqObject.getSqlCount(); i++ ) {
 			const char * sql = reqObject.getSql( i );
 
@@ -142,6 +140,12 @@ int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * 
 				ret = -1;
 				break;
 			}
+		}
+
+		if( 0 == ret ) {
+			dbRet = SP_HiveSchemaManager::execWithLog( store.getHandle(), "COMMIT" );
+		} else {
+			dbRet = SP_HiveSchemaManager::execWithLog( store.getHandle(), "ROLLBACK" );
 		}
 	}
 

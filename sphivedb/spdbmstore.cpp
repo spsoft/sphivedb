@@ -276,7 +276,10 @@ int SP_DbmStoreManager :: loadFromDbm( void * dbm, const char * user,
 		mem->used = mem->total = vlen;
 	}
 
-	if( 0 != spmemvfs_open_db( db, user, mem ) ) {
+	char key4lock[ 128 ] = { 0 };
+	snprintf( key4lock, sizeof( key4lock ), "%s/%s", user, dbname );
+
+	if( 0 != spmemvfs_open_db( db, key4lock, mem ) ) {
 		SP_NKLog::log( LOG_ERR, "ERROR: cannot open db, %s", user );
 		return -1;
 	}

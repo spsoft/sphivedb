@@ -21,77 +21,29 @@
 SP_HiveSchemaManager :: SP_HiveSchemaManager()
 {
 	mConfig = NULL;
-	mTableList = NULL;
+	mDBList = NULL;
 }
 
 SP_HiveSchemaManager :: ~SP_HiveSchemaManager()
 {
-	for( int i = 0; i < mTableList->getCount(); i++ ) {
-		SP_HiveTableSchema * schema = (SP_HiveTableSchema*)mTableList->getItem( i );
-		delete schema;
-	}
-
-	if( mTableList ) delete mTableList, mTableList = NULL;
-}
-
-int SP_HiveSchemaManager :: createTable( sqlite3 * handle, const char * sql,
-			char * table, int size )
-{
-	char * errmsg = NULL;
-
-	int dbRet = sqlite3_exec( handle, sql, NULL, NULL, &errmsg );
-
-	if( 0 != dbRet ) {
-		SP_NKLog::log( LOG_ERR, "ERROR: sqlite3_exec(%s) = %d, %s",
-				sql, dbRet, errmsg ? errmsg : "NULL" );
-		if( NULL != errmsg ) sqlite3_free( errmsg );
-		return -1;
-	}
-
-	char tmp[ 512 ] = { 0 };
-	snprintf( tmp, sizeof( tmp ),
-			"select tbl_name from sqlite_master where type='table'" );
-
-	sqlite3_stmt * stmt = NULL;
-
-	dbRet = sqlite3_prepare( handle, tmp, strlen( tmp ), &stmt, NULL );
-
-	if( SQLITE_OK == dbRet ) {
-		dbRet = -1;
-
-		for( ; ; ) {
-			int stepRet = sqlite3_step( stmt );
-
-			if( SQLITE_DONE != stepRet && SQLITE_ROW != stepRet ) {
-				break;
-			}
-
-			if( SQLITE_DONE == stepRet ) break;
-
-			const char * value = (char*)sqlite3_column_text( stmt, 0 );
-
-			if( 0 != strncasecmp( value, "sqlite_", 7 ) ) {
-				strncpy( table, value, size );
-				table[ size - 1 ] = '\0';
-			}
-
-			dbRet = 0;
+	if( mDBList ) {
+		for( int i = 0; i < mDBList->getCount(); i++ ) {
+			SP_HiveDBSchema * schema = (SP_HiveDBSchema*)mDBList->getItem( i );
+			delete schema;
 		}
+
+		delete mDBList, mDBList = NULL;
 	}
-
-	sqlite3_finalize( stmt );
-
-	return dbRet;
 }
 
-SP_HiveTableSchema * SP_HiveSchemaManager :: findTable( const char * dbname )
+SP_HiveDBSchema * SP_HiveSchemaManager :: findDB( const char * dbname )
 {
-	SP_HiveTableSchema * ret = NULL;
+	SP_HiveDBSchema * ret = NULL;
 
-	for( int i = 0; i < mTableList->getCount(); i++ ) {
-		SP_HiveTableSchema * schema = (SP_HiveTableSchema*)mTableList->getItem( i );
+	for( int i = 0; i < mDBList->getCount(); i++ ) {
+		SP_HiveDBSchema * schema = (SP_HiveDBSchema*)mDBList->getItem( i );
 
-		if( 0 == strcasecmp( schema->getDbname(), dbname ) ) {
+		if( 0 == strcasecmp( schema->getDBName(), dbname ) ) {
 			ret = schema;
 			break;
 		}
@@ -106,34 +58,21 @@ int SP_HiveSchemaManager :: init( SP_HiveConfig * config )
 
 	mConfig = config;
 
-	mTableList = new SP_NKVector();
+	mDBList = new SP_NKVector();
 
 	SP_NKNameValueList * listOfDDL = config->getListOfDDL();
 
 	for( int i = 0; i < listOfDDL->getCount(); i++ ) {
 		const char * dbname = listOfDDL->getName( i );
-		const char * sql  = listOfDDL->getValue( i );
+		const char * ddl = listOfDDL->getValue( i );
 
-		sqlite3 * handle = NULL;
-		sqlite3_open( ":memory:", &handle );
-
-		char table[ 256 ] = { 0 };
-		if( 0 == createTable( handle, sql, table, sizeof( table ) ) ) {
-			SP_HiveTableSchema * schema = new SP_HiveTableSchema();
-			if( 0 == schema->init( handle, dbname, table ) ) {
-				SP_NKLog::log( LOG_DEBUG, "INIT: parse ddl ok, [%s]%s", dbname, sql );
-				mTableList->append( schema );
-			} else {
-				ret = -1;
-				SP_NKLog::log( LOG_ERR, "ERROR: invalid ddl, [%s]%s", dbname, sql );
-				delete schema;
-			}
+		SP_HiveDBSchema * schema = new SP_HiveDBSchema();
+		if( 0 == schema->init( dbname, ddl ) ) {
+			mDBList->append( schema );
 		} else {
-			SP_NKLog::log( LOG_ERR, "ERROR: invalid ddl, [%s]%s", dbname, sql );
 			ret = -1;
+			delete schema;
 		}
-
-		sqlite3_close( handle );
 	}
 
 	return ret;
@@ -141,36 +80,38 @@ int SP_HiveSchemaManager :: init( SP_HiveConfig * config )
 
 int SP_HiveSchemaManager :: ensureSchema( sqlite3 * handle, const char * dbname )
 {
-	const char * newDDL = mConfig->getDDL( dbname );
+	SP_HiveDBSchema * newDB = findDB( dbname );
 
-	SP_HiveTableSchema * newTable = findTable( dbname );
-
-	if( NULL == newDDL || NULL == newTable ) {
+	if( NULL == newDB ) {
 		SP_NKLog::log( LOG_ERR, "ERROR: invalid dbname %s, cannot find schema", dbname );
 		return -1;
 	}
 
 	int ret = 0;
 
-	int oldCount = SP_HiveTableSchema::getTableColumnCount( handle, newTable->getTable() );
+	for( int i = 0; i < newDB->getTableCount(); i++ ) {
+		SP_HiveTableSchema * newTable = newDB->getTable( i );
 
-	if( oldCount == 0 ) {
-		SP_NKLog::log( LOG_DEBUG, "DEBUG: create %s", dbname );
-		ret = execWithLog( handle, newDDL );
-	} else if( oldCount > 0 ) {
-		if( oldCount < newTable->getColumnCount() ) {
-			SP_HiveTableSchema oldTable;
+		int oldCount = SP_HiveTableSchema::getTableColumnCount( handle, newTable->getTableName() );
 
-			oldTable.init( handle, dbname, newTable->getTable() );
+		if( oldCount == 0 ) {
+			SP_NKLog::log( LOG_DEBUG, "DEBUG: create [%s]%s", dbname, newTable->getTableName() );
+			ret = execWithLog( handle, newTable->getDDL() );
+		} else if( oldCount > 0 ) {
+			if( oldCount < newTable->getColumnCount() ) {
+				SP_HiveTableSchema oldTable;
 
-			ret = alterTable( handle, newTable, &oldTable );
+				oldTable.init( handle, newTable->getTableName(), "" );
+
+				ret = alterTable( handle, newTable, &oldTable );
+			} else {
+				// not need action
+			}
 		} else {
-			// not need action
+			SP_NKLog::log( LOG_ERR, "ERR: cannot get table column count, [%s]%s",
+					dbname, newTable->getTableName() );
+			ret = -1;
 		}
-	} else {
-		SP_NKLog::log( LOG_ERR, "ERR: cannot get table column count, [%s]%s",
-				dbname, newTable->getTable() );
-		ret = -1;
 	}
 
 	return ret;
@@ -209,13 +150,164 @@ int SP_HiveSchemaManager :: alterTable( sqlite3 * handle, SP_HiveTableSchema * n
 	if( newColumnList.getCount() > 0 ) {
 		for( int i = 0; 0 == ret && i < newColumnList.getCount(); i++ ) {
 			SP_NKLog::log( LOG_DEBUG, "DEBUG: %s add column %s",
-					oldTable->getTable(), newColumnList.getItem( i ) );
+					oldTable->getTableName(), newColumnList.getItem( i ) );
 
 			char sql[ 1024 ] = { 0 };
 			snprintf( sql, sizeof( sql ), "alter table %s add column %s;",
-					oldTable->getTable(), newColumnList.getItem( i ) );
+					oldTable->getTableName(), newColumnList.getItem( i ) );
 
 			ret = execWithLog( handle, sql );
+		}
+	}
+
+	return ret;
+}
+
+//====================================================================
+
+SP_HiveDBSchema :: SP_HiveDBSchema()
+{
+	mTableList = NULL;
+	mDBName = NULL;
+}
+
+SP_HiveDBSchema :: ~SP_HiveDBSchema()
+{
+	if( NULL != mTableList ) {
+		for( int i = 0; i < mTableList->getCount(); i++ ) {
+			SP_HiveTableSchema * schema = (SP_HiveTableSchema*)mTableList->getItem( i );
+			delete schema;
+		}
+
+		delete mTableList, mTableList = NULL;
+	}
+
+	if( mDBName ) free( mDBName ), mDBName = NULL;
+}
+
+int SP_HiveDBSchema :: init( const char * dbname, const char * ddl )
+{
+	mTableList = new SP_NKVector();
+	mDBName = strdup( dbname );
+
+	int ret = 0;
+
+	sqlite3 * handle = NULL;
+	sqlite3_open( ":memory:", &handle );
+
+	for( ; NULL != ddl && 0 == ret; ) {
+
+		sqlite3_stmt * stmt = NULL;
+		const char * next = NULL;
+
+		ret = sqlite3_prepare_v2( handle, ddl, strlen( ddl ), &stmt, &next );
+
+		if( SQLITE_OK == ret && NULL != stmt ) {
+			const char * sql = sqlite3_sql( stmt );
+
+			char table[ 256 ] = { 0 };
+			if( 0 == createTable( handle, sql, table, sizeof( table ) ) ) {
+				SP_HiveTableSchema * schema = new SP_HiveTableSchema();
+				if( 0 == schema->init( handle, table, sql ) ) {
+					SP_NKLog::log( LOG_DEBUG, "INIT: parse ddl ok, [%s]%s", dbname, sql );
+					mTableList->append( schema );
+				} else {
+					ret = -1;
+					SP_NKLog::log( LOG_ERR, "ERROR: invalid ddl, [%s]%s", dbname, sql );
+					delete schema;
+				}
+			} else {
+				SP_NKLog::log( LOG_ERR, "ERROR: invalid ddl, [%s]%s", dbname, sql );
+				ret = -1;
+			}
+		}
+
+		ddl = stmt ? next : NULL;
+
+		if( NULL != stmt ) sqlite3_finalize( stmt );
+	}
+
+	sqlite3_close( handle );
+
+	return ret;
+}
+
+int SP_HiveDBSchema :: createTable( sqlite3 * handle, const char * sql,
+			char * table, int size )
+{
+	char * errmsg = NULL;
+
+	int dbRet = sqlite3_exec( handle, sql, NULL, NULL, &errmsg );
+
+	if( 0 != dbRet ) {
+		SP_NKLog::log( LOG_ERR, "ERROR: sqlite3_exec(%s) = %d, %s",
+				sql, dbRet, errmsg ? errmsg : "NULL" );
+		if( NULL != errmsg ) sqlite3_free( errmsg );
+		return -1;
+	}
+
+	char tmp[ 512 ] = { 0 };
+	snprintf( tmp, sizeof( tmp ),
+			"select tbl_name from sqlite_master where type='table'" );
+
+	sqlite3_stmt * stmt = NULL;
+
+	dbRet = sqlite3_prepare( handle, tmp, strlen( tmp ), &stmt, NULL );
+
+	if( SQLITE_OK == dbRet ) {
+		dbRet = -1;
+
+		for( ; ; ) {
+			int stepRet = sqlite3_step( stmt );
+
+			if( SQLITE_DONE != stepRet && SQLITE_ROW != stepRet ) {
+				break;
+			}
+
+			if( SQLITE_DONE == stepRet ) break;
+
+			const char * value = (char*)sqlite3_column_text( stmt, 0 );
+
+			if( 0 != strncasecmp( value, "sqlite_", 7 ) ) {
+				if( findTable( value ) < 0 ) {
+					strncpy( table, value, size );
+					table[ size - 1 ] = '\0';
+					dbRet = 0;
+				}
+			}
+		}
+	}
+
+	sqlite3_finalize( stmt );
+
+	return dbRet;
+}
+
+const char * SP_HiveDBSchema :: getDBName() const
+{
+	return mDBName;
+}
+
+int SP_HiveDBSchema :: getTableCount() const
+{
+	return mTableList->getCount();
+}
+
+SP_HiveTableSchema * SP_HiveDBSchema :: getTable( int index ) const
+{
+	return (SP_HiveTableSchema*)mTableList->getItem( index );
+}
+
+int SP_HiveDBSchema :: findTable( const char * tableName )
+{
+	int ret = -1;
+
+	for( int i = 0; i < mTableList->getCount(); i++ ) {
+		SP_HiveTableSchema * schema = (SP_HiveTableSchema*)mTableList->getItem( i );
+
+		if( 0 == strcmp( tableName, schema->getTableName() ) ) {
+			ret = i;
+			break;
 		}
 	}
 
@@ -231,28 +323,28 @@ int SP_HiveTableSchema :: getTableColumnCount( sqlite3 * handle, const char * ta
 
 SP_HiveTableSchema :: SP_HiveTableSchema()
 {
-	mDbname = NULL;
-	mTable = NULL;
+	mTableName = NULL;
+	mDDL = NULL;
 	mColumnList = NULL;
 }
 
 SP_HiveTableSchema :: ~SP_HiveTableSchema()
 {
-	if( mDbname ) free( mDbname ), mDbname = NULL;
-	if( mTable ) free( mTable ), mTable = NULL;
+	if( mTableName ) free( mTableName ), mTableName = NULL;
+	if( mDDL ) free( mDDL ), mDDL = NULL;
 
 	if( NULL != mColumnList ) delete mColumnList, mColumnList = NULL;
 }
 
-int SP_HiveTableSchema :: init( sqlite3 * handle, const char * dbname, const char * table )
+int SP_HiveTableSchema :: init( sqlite3 * handle, const char * tableName, const char * ddl )
 {
-	mDbname = strdup( dbname );
-	mTable = strdup( table );
+	mDDL = strdup( ddl );
+	mTableName = strdup( tableName );
 	mColumnList = new SP_NKNameValueList();
 
 	spsqlite_column_t * columns = NULL;
 
-	int dbRet = spsqlite_table_columns_get( handle, table, &columns );
+	int dbRet = spsqlite_table_columns_get( handle, tableName, &columns );
 
 	if( 0 != dbRet ) {
 		SP_NKLog::log( LOG_ERR, "ERR: spsqlite_table_columns_get %d", dbRet );
@@ -293,14 +385,14 @@ int SP_HiveTableSchema :: init( sqlite3 * handle, const char * dbname, const cha
 	return 0;
 }
 
-const char * SP_HiveTableSchema :: getDbname() const
+const char * SP_HiveTableSchema :: getTableName() const
 {
-	return mDbname;
+	return mTableName;
 }
 
-const char * SP_HiveTableSchema :: getTable() const
+const char * SP_HiveTableSchema :: getDDL() const
 {
-	return mTable;
+	return mDDL;
 }
 
 int SP_HiveTableSchema :: getColumnCount() const
