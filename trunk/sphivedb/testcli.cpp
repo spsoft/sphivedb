@@ -127,7 +127,8 @@ int main( int argc, char * argv[] )
 				delete rs;
 			}
 		} else {
-			printf( "execute fail, errcode %d\n", resp->getErrorCode() );
+			printf( "execute fail, errcode %d, %s\n",
+					resp->getErrdataCode(), resp->getErrdataMsg() );
 		}
 
 		delete resp;

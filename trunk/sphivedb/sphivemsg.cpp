@@ -106,6 +106,33 @@ int SP_HiveRespObject :: getErrorCode()
 	return NULL != node ? node->getValue() : 0;
 }
 
+const char * SP_HiveRespObject :: getErrorMsg()
+{
+	SP_JsonHandle handle( mInner->getError() );
+
+	SP_JsonStringNode * node = handle.getChild( "message" ).toString();
+
+	return NULL != node ? node->getValue() : NULL;
+}
+
+int SP_HiveRespObject :: getErrdataCode()
+{
+	SP_JsonHandle handle( mInner->getError() );
+
+	SP_JsonIntNode * node = handle.getChild( "data" ).getChild( "code" ).toInt();
+
+	return NULL != node ? node->getValue() : 0;
+}
+
+const char * SP_HiveRespObject :: getErrdataMsg()
+{
+	SP_JsonHandle handle( mInner->getError() );
+
+	SP_JsonStringNode * node = handle.getChild( "data" ).getChild( "message" ).toString();
+
+	return NULL != node ? node->getValue() : NULL;
+}
+
 int SP_HiveRespObject :: getResultCount()
 {
 	SP_JsonHandle handle( mInner->getResult() );

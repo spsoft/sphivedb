@@ -8,6 +8,7 @@
 
 class SP_JsonRpcReqObject;
 class SP_JsonArrayNode;
+class SP_JsonObjectNode;
 
 class SP_NKTokenLockManager;
 
@@ -31,14 +32,17 @@ public:
 	int init( SP_HiveConfig * config, SP_NKTokenLockManager * lockManager,
 			SP_HiveStoreManager * storeManager );
 
-	int execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * result );
+	int execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * result,
+			SP_JsonObjectNode * errdata );
 
 private:
 
-	int checkReq( SP_HiveReqObject * reqObject );
+	int checkReq( SP_HiveReqObject * reqObject, SP_JsonObjectNode * errdata );
 
-	static int doSelect( sqlite3 * handle, const char * sql, SP_JsonArrayNode * result );
-	static int doUpdate( sqlite3 * handle, const char * sql, SP_JsonArrayNode * result );
+	static int doSelect( sqlite3 * handle, const char * sql,
+			SP_JsonArrayNode * result, SP_JsonObjectNode * errdata );
+	static int doUpdate( sqlite3 * handle, const char * sql,
+			SP_JsonArrayNode * result, SP_JsonObjectNode * errdata );
 
 private:
 	SP_NKTokenLockManager * mLockManager;

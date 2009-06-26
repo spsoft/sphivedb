@@ -73,8 +73,17 @@ int SP_HiveHandler :: doExecute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode 
 
 	const char * errmsg = reqObject.verify();
 
+	SP_JsonObjectNode * errdata = new SP_JsonObjectNode();
+	{
+		SP_JsonPairNode * dataPair = new SP_JsonPairNode();
+		dataPair->setName( "data" );
+		dataPair->setValue( errdata );
+
+		error->addValue( dataPair );
+	}
+
 	if( NULL == errmsg ) {
-		ret = mManager->execute( rpcReq, result );
+		ret = mManager->execute( rpcReq, result, errdata );
 		if( 0 != ret ) {
 			SP_JsonRpcUtils::setError( error,
 				SP_JsonRpcUtils::eInternalError, "Internal error." );

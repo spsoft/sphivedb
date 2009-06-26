@@ -37,6 +37,10 @@ public:
 	~SP_HiveRespObject();
 
 	int getErrorCode();
+	const char * getErrorMsg();
+
+	int getErrdataCode();
+	const char * getErrdataMsg();
 
 	int getResultCount();
 
