@@ -20,6 +20,7 @@
 #include "spnetkit/spnklock.hpp"
 
 #include "spjson/spjsonnode.hpp"
+#include "spjson/spjsonrpc.hpp"
 
 SP_HiveManager :: SP_HiveManager()
 {
@@ -66,11 +67,14 @@ int SP_HiveManager :: init( SP_HiveConfig * config, SP_NKTokenLockManager * lock
 	return ret;
 }
 
-int SP_HiveManager :: checkReq( SP_HiveReqObject * reqObject )
+int SP_HiveManager :: checkReq( SP_HiveReqObject * reqObject,
+		SP_JsonObjectNode * errdata )
 {
 	int dbfile = reqObject->getDBFile();
 
 	if( dbfile < mConfig->getDBFileBegin() || dbfile > mConfig->getDBFileEnd() ) {
+		SP_JsonRpcUtils::setError( errdata, -1, "invalid dbfile" );
+
 		SP_NKLog::log( LOG_ERR, "ERROR: invalid dbfile, %d no in [%d, %d]",
 				dbfile, mConfig->getDBFileBegin(), mConfig->getDBFileEnd() );
 		return -1;
@@ -81,6 +85,8 @@ int SP_HiveManager :: checkReq( SP_HiveReqObject * reqObject )
 	const char * ddl = mConfig->getDDL( dbname );
 
 	if( NULL == ddl ) {
+		SP_JsonRpcUtils::setError( errdata, -1, "invalid dbname" );
+
 		SP_NKLog::log( LOG_ERR, "ERROR: invalid dbname %s, cannot find ddl", dbname );
 		return -1;
 	}
@@ -88,13 +94,14 @@ int SP_HiveManager :: checkReq( SP_HiveReqObject * reqObject )
 	return 0;
 }
 
-int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * result )
+int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq,
+		SP_JsonArrayNode * result, SP_JsonObjectNode * errdata )
 {
 	int ret = 0;
 
 	SP_HiveReqObject reqObject( rpcReq );
 
-	if( 0 != checkReq( &reqObject ) ) return -1;
+	if( 0 != checkReq( &reqObject, errdata ) ) return -1;
 
 	int dbfile = reqObject.getDBFile();
 	const char * user = reqObject.getUser();
@@ -106,6 +113,8 @@ int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * 
 	SP_NKTokenLockGuard lockGuard( mLockManager );
 
 	if( 0 != lockGuard.lock( key4lock, mConfig->getLockTimeoutSeconds() * 1000 ) ) {
+		SP_JsonRpcUtils::setError( errdata, -1, "lock fail" );
+
 		SP_NKLog::log( LOG_ERR, "ERROR: Lock %s fail", user );
 		return -1;
 	}
@@ -116,6 +125,9 @@ int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * 
 
 	if( 0 == ret ) {
 		ret = mSchemaManager->ensureSchema( store.getHandle(), dbname );
+		if( 0 != ret ) SP_JsonRpcUtils::setError( errdata, -1, "ensure schema fail" );
+	} else {
+		SP_JsonRpcUtils::setError( errdata, -1, "load store fail" );
 	}
 
 	int hasUpdate = 0;
@@ -130,9 +142,9 @@ int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * 
 			const char * sql = reqObject.getSql( i );
 
 			if( 0 == strncasecmp( "select", sql, 6 ) ) {
-				dbRet = doSelect( store.getHandle(), sql, result );
+				dbRet = doSelect( store.getHandle(), sql, result, errdata );
 			} else {
-				dbRet = doUpdate( store.getHandle(), sql, result );
+				dbRet = doUpdate( store.getHandle(), sql, result, errdata );
 				if( dbRet > 0 ) hasUpdate = 1;
 			}
 
@@ -161,15 +173,20 @@ int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * 
 	return ret;
 }
 
-int SP_HiveManager :: doSelect( sqlite3 * handle, const char * sql, SP_JsonArrayNode * result )
+int SP_HiveManager :: doSelect( sqlite3 * handle, const char * sql,
+		SP_JsonArrayNode * result, SP_JsonObjectNode * errdata )
 {
+	const char * errmsg = NULL;
+
 	sqlite3_stmt * stmt = NULL;
 
 	int dbRet = sqlite3_prepare( handle, sql, strlen( sql ), &stmt, NULL );
 
 	if( SQLITE_OK != dbRet ) {
-		SP_NKLog::log( LOG_ERR, "ERROR: sqlite3_prepare(%s) = %d", sql, dbRet );
+		errmsg = sqlite3_errmsg( handle );
+		SP_JsonRpcUtils::setError( errdata, dbRet, errmsg );
 
+		SP_NKLog::log( LOG_ERR, "ERROR: sqlite3_prepare(%s) = %d, %s", sql, dbRet, errmsg );
 		if( NULL != stmt ) sqlite3_finalize( stmt );
 		return -1;
 	}
@@ -186,8 +203,12 @@ int SP_HiveManager :: doSelect( sqlite3 * handle, const char * sql, SP_JsonArray
 			int stepRet = sqlite3_step( stmt );
 
 			if( SQLITE_DONE != stepRet && SQLITE_ROW != stepRet ) {
+				errmsg = sqlite3_errmsg( handle );
+				SP_JsonRpcUtils::setError( errdata, stepRet, errmsg );
+
+				SP_NKLog::log( LOG_ERR, "ERROR: sqlite3_step(%s) = %d, %s", sql, stepRet, errmsg );
+
 				dbRet = -1;
-				SP_NKLog::log( LOG_ERR, "ERROR: sqlite3_step(%s) = %d", sql, stepRet );
 				break;
 			}
 
@@ -258,13 +279,16 @@ int SP_HiveManager :: doSelect( sqlite3 * handle, const char * sql, SP_JsonArray
 	return dbRet;
 }
 
-int SP_HiveManager :: doUpdate( sqlite3 * handle, const char * sql, SP_JsonArrayNode * result )
+int SP_HiveManager :: doUpdate( sqlite3 * handle, const char * sql,
+		SP_JsonArrayNode * result, SP_JsonObjectNode * errdata )
 {
 	char * errmsg = NULL;
 
 	int dbRet = sqlite3_exec( handle, sql, NULL, NULL, &errmsg );
 
 	if( 0 != dbRet ) {
+		SP_JsonRpcUtils::setError( errdata, dbRet, errmsg );
+
 		SP_NKLog::log( LOG_ERR, "ERROR: sqlite3_exec(%s) = %d, %s",
 				sql, dbRet, errmsg ? errmsg : "NULL" );
 		if( NULL != errmsg ) sqlite3_free( errmsg );
