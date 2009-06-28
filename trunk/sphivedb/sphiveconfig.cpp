@@ -14,15 +14,18 @@
 #include "spnetkit/spnkporting.hpp"
 #include "spnetkit/spnklist.hpp"
 #include "spnetkit/spnkstr.hpp"
+#include "spnetkit/spnkconfig.hpp"
 
 SP_HiveConfig :: SP_HiveConfig()
 {
 	mListOfDDL = new SP_NKNameValueList();
+	mServerConfig = new SP_NKServerConfig();
 }
 
 SP_HiveConfig :: ~SP_HiveConfig()
 {
 	delete mListOfDDL, mListOfDDL = NULL;
+	delete mServerConfig, mServerConfig = NULL;
 }
 
 int SP_HiveConfig :: init( const char * configFile )
@@ -33,12 +36,9 @@ int SP_HiveConfig :: init( const char * configFile )
 
 	if( 0 == iniFile.open( configFile ) ) {
 
-		SP_NKIniItemInfo_t infoArray[] = {
-			SP_NK_INI_ITEM_INT( "Server", "MaxConnections", mMaxConnections ),
-			SP_NK_INI_ITEM_INT( "Server", "MaxThreads", mMaxThreads ),
-			SP_NK_INI_ITEM_INT( "Server", "MaxReqQueueSize", mMaxReqQueueSize ),
-			SP_NK_INI_ITEM_INT( "Server", "SocketTimeout", mSocketTimeout ),
+		ret = mServerConfig->init( &iniFile, "Server" );
 
+		SP_NKIniItemInfo_t infoArray[] = {
 			SP_NK_INI_ITEM_STR( "Database", "DataDir", mDataDir ),
 			SP_NK_INI_ITEM_INT( "Database", "DBFileBegin", mDBFileBegin ),
 			SP_NK_INI_ITEM_INT( "Database", "DBFileEnd", mDBFileEnd ),
@@ -51,13 +51,7 @@ int SP_HiveConfig :: init( const char * configFile )
 
 		SP_NKIniFile::BatchLoad( &iniFile, infoArray );
 
-		if( mMaxConnections <= 0 ) mMaxConnections = 128;
-		if( mMaxThreads <= 0 ) mMaxThreads = 10;
-		if( mMaxReqQueueSize <= 0 ) mMaxReqQueueSize = 100;
-		if( mSocketTimeout <= 0 ) mSocketTimeout = 600;
-
 		if( mMaxOpenFiles <= 0 ) mMaxOpenFiles = 16;
-
 		if( mLockTimeoutSeconds <= 0 ) mLockTimeoutSeconds = 20;
 
 		SP_NKIniFile::BatchDump( infoArray );
@@ -93,24 +87,9 @@ int SP_HiveConfig :: init( const char * configFile )
 	return ret;
 }
 
-int SP_HiveConfig :: getMaxConnections()
+SP_NKServerConfig * SP_HiveConfig :: getServerConfig()
 {
-	return mMaxConnections;
-}
-
-int SP_HiveConfig :: getSocketTimeout()
-{
-	return mSocketTimeout;
-}
-
-int SP_HiveConfig :: getMaxThreads()
-{
-	return mMaxThreads;
-}
-
-int SP_HiveConfig :: getMaxReqQueueSize()
-{
-	return mMaxReqQueueSize;
+	return mServerConfig;
 }
 
 const char * SP_HiveConfig :: getDataDir()

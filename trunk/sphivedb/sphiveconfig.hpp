@@ -7,6 +7,7 @@
 #define __sphiveconfig_hpp__
 
 class SP_NKNameValueList;
+class SP_NKServerConfig;
 
 class SP_HiveConfig {
 public:
@@ -15,10 +16,7 @@ public:
 
 	int init( const char * configFile );
 
-	int getMaxConnections();
-	int getSocketTimeout();
-	int getMaxThreads();
-	int getMaxReqQueueSize();
+	SP_NKServerConfig * getServerConfig();
 
 	const char * getDataDir();
 	int getDBFileBegin();
@@ -32,10 +30,7 @@ public:
 	SP_NKNameValueList * getListOfDDL();
 
 private:
-	int mMaxConnections;
-	int mSocketTimeout;
-	int mMaxThreads;
-	int mMaxReqQueueSize;
+	SP_NKServerConfig * mServerConfig;
 
 	char mDataDir[ 256 ];
 	int mDBFileBegin;

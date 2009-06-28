@@ -25,6 +25,7 @@
 
 #include "spnetkit/spnklog.hpp"
 #include "spnetkit/spnklock.hpp"
+#include "spnetkit/spnkconfig.hpp"
 
 void showUsage( const char * program )
 {
@@ -130,25 +131,27 @@ int main( int argc, char * argv[] )
 		return -1;
 	}
 
+	SP_NKServerConfig * serverConfig = config.getServerConfig();
+
 	SP_HttpHandlerAdapterFactory * factory =
 			new SP_HttpHandlerAdapterFactory( new SP_HiveHandlerFactory( &manager ) );
 
 	if( 0 == strcasecmp( serverMode, "hahs" ) ) {
 		SP_Server server( "", port, factory );
 
-		server.setMaxConnections( config.getMaxConnections() );
-		server.setTimeout( config.getSocketTimeout() );
-		server.setMaxThreads( config.getMaxThreads() );
-		server.setReqQueueSize( config.getMaxReqQueueSize(), "HTTP/1.1 500 Sorry, server is busy now!\r\n" );
+		server.setMaxConnections( serverConfig->getMaxConnections() );
+		server.setTimeout( serverConfig->getSocketTimeout() );
+		server.setMaxThreads( serverConfig->getMaxThreads() );
+		server.setReqQueueSize( serverConfig->getMaxReqQueueSize(), "HTTP/1.1 500 Sorry, server is busy now!\r\n" );
 
 		server.runForever();
 	} else {
 		SP_LFServer server( "", port, factory );
 
-		server.setMaxConnections( config.getMaxConnections() );
-		server.setTimeout( config.getSocketTimeout() );
-		server.setMaxThreads( config.getMaxThreads() );
-		server.setReqQueueSize( config.getMaxReqQueueSize(), "HTTP/1.1 500 Sorry, server is busy now!\r\n" );
+		server.setMaxConnections( serverConfig->getMaxConnections() );
+		server.setTimeout( serverConfig->getSocketTimeout() );
+		server.setMaxThreads( serverConfig->getMaxThreads() );
+		server.setReqQueueSize( serverConfig->getMaxReqQueueSize(), "HTTP/1.1 500 Sorry, server is busy now!\r\n" );
 
 		server.runForever();
 	}
