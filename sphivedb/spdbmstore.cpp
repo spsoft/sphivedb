@@ -213,16 +213,14 @@ int SP_DbmStoreCache :: save( SP_DbmStore * file )
 			for( int i = 0; i < toDeleteList.getCount(); i++ ) {
 				node = (SP_NKDoubleLinkNode_t*)toDeleteList.getItem( i );
 
-				SP_DbmStore * file = (SP_DbmStore*)node->mData;
-
-				index = mItemList->find( file );
+				index = mItemList->find( node );
 
 				assert( index >= 0 );
 
 				mItemList->takeItem( index );
 				mTimeList->remove( node );
 
-				delete file;
+				delete (SP_DbmStore*)node->mData;
 				free( node );
 			}
 		}
