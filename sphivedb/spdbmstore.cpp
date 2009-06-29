@@ -148,8 +148,11 @@ SP_DbmStore * SP_DbmStoreCache :: get( const char * path )
 		pthread_mutex_unlock( &mMutex );
 
 		if( NULL == ret ) {
+			char realpath[ 256 ] = { 0 };
+			snprintf( realpath, sizeof( realpath ), "%s#mxsiz=0", path );
+
 			void * adb = sp_tcadbnew();
-			if( sp_tcadbopen( adb, path ) ) {
+			if( sp_tcadbopen( adb, realpath ) ) {
 				ret = new SP_DbmStore( path, adb );
 			} else {
 				sp_tcadbdel( adb );
