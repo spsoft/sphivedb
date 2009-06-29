@@ -10,6 +10,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <string.h>
+#include <signal.h>
 
 #include "sphivedbcli.hpp"
 #include "sphivecomm.hpp"
@@ -19,12 +20,13 @@
 #include "spnetkit/spnktime.hpp"
 #include "spnetkit/spnklog.hpp"
 #include "spnetkit/spnksocket.hpp"
+#include "spnetkit/spnkini.hpp"
 
 static int gClients = 8;
 static int gReadTimes = 100;
 static int gWriteTimes = 100;
 static const char * gConfigFile = "sphivedbcli.ini";
-static int gTableKeyMax = 1000;
+static int gTableKeyMax = 10;
 
 static pthread_mutex_t gBeginMutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -59,7 +61,7 @@ void * threadFunc( void * args )
 	int maxUid = gTableKeyMax * 100;
 
 	SP_NKClock clock;
-	int writeTimes = 0;
+	int writeTimes = 0, failTimes = 0;
 
 	for( int i = 0; i < loops; i++ ) {
 		int isWrite = ( random() % loops ) > gReadTimes;
@@ -85,8 +87,10 @@ void * threadFunc( void * args )
 
 		SP_HiveRespObject * resp = client->execute( uid / 100, user, "addrbook", actionSql );
 		if( NULL != resp ) {
+			if( 0 != resp->getErrorCode() ) failTimes++;
 			delete resp;
 		} else {
+			failTimes++;
 			if( 0 == ( i % 100 ) ) printf( "socket fail\n" );
 		}
 	}
@@ -97,14 +101,16 @@ void * threadFunc( void * args )
 	float writePerSeconds = ( writeTimes * 1000.0 ) / usedTime;
 	float readPerSeconds = ( readTimes * 1000.0 ) / usedTime;
 
-	printf( "Used Time: %d (ms), Write %d (%.2f), Read %d (%.2f)\n",
-			usedTime, writeTimes, writePerSeconds, readTimes, readPerSeconds );
+	printf( "Used Time: %d (ms), Write %d (%.2f), Read %d (%.2f), Fail %d\n",
+			usedTime, writeTimes, writePerSeconds, readTimes, readPerSeconds, failTimes );
 
 	return NULL;
 }
 
 int main( int argc, char * argv[] )
 {
+	signal( SIGPIPE, SIG_IGN );
+
 	extern char *optarg ;
 	int c ;
 
@@ -136,6 +142,13 @@ int main( int argc, char * argv[] )
 	SP_HiveDBClient client;
 
 	assert( 0 == client.init( gConfigFile ) );
+
+	SP_NKIniFile iniFile;
+	iniFile.open( gConfigFile );
+
+	gTableKeyMax = iniFile.getValueAsInt( "EndPointTable", "TableKeyMax" );
+
+	printf( "TableKeyMax %d\n", gTableKeyMax );
 
 	pthread_t * thrlist = (pthread_t*)calloc( sizeof( pthread_t ), gClients );
 
