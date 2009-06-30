@@ -63,8 +63,10 @@ void * threadFunc( void * args )
 	SP_NKClock clock;
 	int writeTimes = 0, failTimes = 0;
 
+	int tid = (int)pthread_self();
+
 	for( int i = 0; i < loops; i++ ) {
-		int isWrite = ( random() % loops ) > gReadTimes;
+		int isWrite = ( random() % loops ) >= gReadTimes;
 		int uid = random() % maxUid;
 
 		char user[ 32 ] = { 0 };
@@ -75,7 +77,7 @@ void * threadFunc( void * args )
 		if( isWrite ) {
 			char sql[ 256 ] = { 0 };
 			snprintf( sql, sizeof( sql ), "insert into addrbook ( gid, addr, freq ) "
-					"values ( 0, '%d.%d', 0 );", i, (int)time( NULL ) );
+					"values ( 0, '%d.%d.%d', 0 );", i, tid, (int)time( NULL ) );
 
 			writeSql.clean();
 			writeSql.append( sql );
