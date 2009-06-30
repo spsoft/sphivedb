@@ -89,11 +89,14 @@ void * threadFunc( void * args )
 
 		SP_HiveRespObject * resp = client->execute( uid / 100, user, "addrbook", actionSql );
 		if( NULL != resp ) {
-			if( 0 != resp->getErrorCode() ) failTimes++;
+			if( 0 != resp->getErrorCode() ) {
+				failTimes++;
+				printf( "execute fail, errcode %d, %s\n",
+						resp->getErrdataCode(), resp->getErrdataMsg() );
+			}
 			delete resp;
 		} else {
 			failTimes++;
-			if( 0 == ( i % 100 ) ) printf( "socket fail\n" );
 		}
 	}
 
