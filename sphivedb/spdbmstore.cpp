@@ -149,7 +149,7 @@ SP_DbmStore * SP_DbmStoreCache :: get( const char * path )
 
 		if( NULL == ret ) {
 			char realpath[ 256 ] = { 0 };
-			snprintf( realpath, sizeof( realpath ), "%s#mxsiz=0", path );
+			snprintf( realpath, sizeof( realpath ), "%s#xmsiz=0", path );
 
 			void * adb = sp_tcadbnew();
 			if( sp_tcadbopen( adb, realpath ) ) {
