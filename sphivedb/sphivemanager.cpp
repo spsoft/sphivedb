@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
 
 #include "sphivemanager.hpp"
 #include "sphivemsg.hpp"
@@ -140,6 +141,7 @@ int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq,
 
 		for( int i = 0; i < reqObject.getSqlCount(); i++ ) {
 			const char * sql = reqObject.getSql( i );
+			for( ; isspace( *sql ); ) sql++;
 
 			if( 0 == strncasecmp( "select", sql, 6 ) ) {
 				dbRet = doSelect( store.getHandle(), sql, result, errdata );
