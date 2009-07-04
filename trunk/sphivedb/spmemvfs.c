@@ -504,9 +504,9 @@ int spmemvfs_open_db( spmemvfs_db_t * db, const char * path, spmembuffer_t * mem
 
 int spmemvfs_close_db( spmemvfs_db_t * db )
 {
-	if( NULL == db ) return 0;
-
 	int ret = 0;
+
+	if( NULL == db ) return 0;
 
 	if( NULL != db->handle ) {
 		ret = sqlite3_close( db->handle );
