@@ -1,0 +1,72 @@
+<?xml version="1.0"?>
+<project default="jar" basedir=".">
+	<property name="src" value="src"/>
+	<property name="classes" value="classes"/>
+	<property name="sphivedbcli.jar" value="sphivedbcli.jar"/>
+	<property name="sphivedbcli.docs" value="sphivedbcli.docs"/>
+	<property name="author.name" value="Stephen Liu"/>
+	<property name="json.jar" value="3rdlib/json.jar"/>
+
+	<path id="my.class.path">
+		<pathelement location="${json.jar}"/>
+	</path>
+
+	<target name="compile" depends="check">
+		<mkdir dir="${classes}"/>
+		<javac srcdir="${src}" destdir="${classes}" debug="on">
+			<classpath refid="my.class.path"/>
+			<include name="**/*.java"/>
+		</javac>
+	</target>
+
+	<target name="check">
+		<condition property="require.lib.OK">
+			<and>
+				<available file="${json.jar}" type="file"/>
+			</and>
+		</condition>
+		<fail unless="require.lib.OK" message="require libraries are not existing">
+			need ${json.jar}
+		</fail>
+	</target>
+
+	<target name="jar" depends="compile">
+		<mkdir dir="${classes}/META-INF"/>
+		<jar destfile="${sphivedbcli.jar}">
+			<fileset dir="${classes}"/>
+			<manifest>
+				<attribute name="Built-By" value="${author.name}"/>
+			</manifest>
+		</jar>
+	</target>
+
+	<target name="docs" depends="compile">
+		<javadoc packagenames="sphivedbcli" destdir="${sphivedbcli.docs}"
+			author="true"
+			version="true"
+			use="true"
+			splitindex="true"
+			windowtitle="sphivedbcli"
+			doctitle="sphivedbcli">
+
+			<classpath refid="my.class.path"/>
+
+			<fileset dir="${src}" defaultexcludes="yes">
+				<include name="*" />
+			</fileset>
+
+		</javadoc>
+	</target>	
+
+	<target name="clean">
+		<delete includeEmptyDirs="true" failonerror="no">
+			<fileset dir=".">
+				<include name="${sphivedbcli.jar}"/>
+			</fileset>
+			<fileset dir="${classes}"/>
+			<fileset dir="${sphivedbcli.docs}"/>
+		</delete>
+	</target>
+
+</project>
+
