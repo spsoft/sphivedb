@@ -28,6 +28,10 @@ static int gWriteTimes = 100;
 static const char * gConfigFile = "sphivedbcli.ini";
 static int gTableKeyMax = 10;
 
+static int gTotalReadTimes = 0;
+static int gTotalWriteTimes = 0;
+static int gTotalFailTimes = 0;
+
 static pthread_mutex_t gBeginMutex = PTHREAD_MUTEX_INITIALIZER;
 
 void showUsage( const char * program )
@@ -109,6 +113,10 @@ void * threadFunc( void * args )
 	printf( "Used Time: %d (ms), Write %d (%.2f), Read %d (%.2f), Fail %d\n",
 			usedTime, writeTimes, writePerSeconds, readTimes, readPerSeconds, failTimes );
 
+	gTotalReadTimes += readTimes;
+	gTotalWriteTimes += writeTimes;
+	gTotalFailTimes += failTimes;
+
 	return NULL;
 }
 
@@ -172,9 +180,22 @@ int main( int argc, char * argv[] )
 
 	pthread_mutex_unlock( &gBeginMutex );
 
+	SP_NKClock clock;
+
 	for( int i = 0; i < gClients; i++ ) {
 		pthread_join( thrlist[i], NULL );
 	}
+
+	printf( "\n" );
+
+	int usedTime = clock.getAge();
+
+	float writePerSeconds = ( gTotalWriteTimes * 1000.0 ) / usedTime;
+	float readPerSeconds = ( gTotalReadTimes * 1000.0 ) / usedTime;
+
+	printf( "Total Used Time: %d (ms), Write %d (%.2f), Read %d (%.2f), Fail %d\n",
+			usedTime, gTotalWriteTimes, writePerSeconds, gTotalReadTimes,
+			readPerSeconds, gTotalFailTimes );
 
 	return 0;
 }
