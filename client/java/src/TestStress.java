@@ -10,10 +10,11 @@ import java.util.ArrayList;
 
 public class TestStress {
 
-	public class Task implements Runnable {
+	public class Task extends Thread {
 		private SPHiveDBClient mClient;
 		private int mReadTimes;
 		private int mWriteTimes;
+		private int mFailTimes;
 
 		private Random mRandom;
 
@@ -21,14 +22,19 @@ public class TestStress {
 			mClient = client;
 			mReadTimes = readTimes;
 			mWriteTimes = writeTimes;
+			mFailTimes = 0;
 
 			mRandom = random;
 		}
 
+		int getReadTimes() { return mReadTimes; }
+
+		int getWriteTimes() { return mWriteTimes; }
+
+		int getFailTimes() { return mFailTimes; }
+
 		public void run() {
 			int tableKeyMax = mClient.getEndPointTable().getTableKeyMax();
-
-			int failTimes = 0;
 
 			int loops = mReadTimes + mWriteTimes;
 			int maxUid = tableKeyMax * 100;
@@ -37,6 +43,8 @@ public class TestStress {
 
 			long beginTime = System.currentTimeMillis();
 
+			int readTimes = 0, writeTimes = 0;
+
 			for( int i = 0; i < loops; i++ ) {
 				boolean isWrite = mRandom.nextInt( loops ) >= mReadTimes;
 
@@ -44,20 +52,28 @@ public class TestStress {
 
 				String actionSql [] = readSql;
 				if( isWrite ) {
+					writeTimes++;
 					String writeSql = "insert into addrbook ( gid, addr, freq ) values ( 0, '"
 							+ i + "." + System.currentTimeMillis() + "." + "', 0 )";
 					actionSql = new String[] { writeSql };
+				} else {
+					readTimes++;
 				}
 
 				SPHiveRespObject respObj = mClient.execute( uid / 100, "" + uid, "addrbook", actionSql );
 				if( null != respObj ) {
 					if( 0 != respObj.getErrorCode() ) {
-						failTimes++;
+						mFailTimes++;
 						System.out.println( "errcode " + respObj.getErrdataCode()
 								+ ", errmsg " + respObj.getErrdataMsg() );
 					}
 				} else {
-					failTimes++;
+					mFailTimes++;
+				}
+
+				try {
+					java.lang.Thread.sleep( 0, 10 );
+				} catch( Exception e ) {
 				}
 			}
 
@@ -65,16 +81,19 @@ public class TestStress {
 
 			long usedTime = endTime - beginTime;
 
-			double writePerSeconds = ( mWriteTimes * 1000.0 ) / usedTime;
-			double readPerSeconds = ( mReadTimes * 1000.0 ) / usedTime;
+			double writePerSeconds = ( writeTimes * 1000.0 ) / usedTime;
+			double readPerSeconds = ( readTimes * 1000.0 ) / usedTime;
 
 			System.out.println( "Used Time: " + usedTime + "(ms), Write "
-					+ mWriteTimes + " (" + writePerSeconds + "), "
-					+ "Read " + mReadTimes + " (" + readPerSeconds + "), Fail " + failTimes );
+					+ writeTimes + " (" + writePerSeconds + "), "
+					+ "Read " + readTimes + " (" + readPerSeconds + "), Fail " + mFailTimes );
+
+			mReadTimes = readTimes;
+			mWriteTimes = writeTimes;
 		}
 	};
 
-	public void test( String [] args ) {
+	public void test( String [] args ) throws Exception {
 		String configFile = args[0];
 		int clientCount = Integer.parseInt( args[1] );
 		int readTimes = Integer.parseInt( args[2] );
@@ -87,13 +106,38 @@ public class TestStress {
 
 		ArrayList runlist = new ArrayList();
 
+		System.out.println( "create threads ..." );
 		for( int i = 0; i < clientCount; i++ ) {
 			runlist.add( new Task( client, random, readTimes, writeTimes ) );
 		}
 
+		long beginTime = System.currentTimeMillis();
+
+		System.out.println( "run threads ..." );
 		for( int i = 0; i < clientCount; i++ ) {
-			( (Runnable)runlist.get(i) ).run();
+			( (Thread)runlist.get(i) ).start();
 		}
+
+		System.out.println( "all threads are running ..." );
+
+		int totalReadTimes = 0, totalWriteTimes = 0, totalFailTimes = 0;
+		for( int i = 0; i < clientCount; i++ ) {
+			( (Thread)runlist.get(i) ).join();
+			totalReadTimes += ((Task)runlist.get(i)).getReadTimes();
+			totalWriteTimes += ((Task)runlist.get(i)).getWriteTimes();
+			totalFailTimes += ((Task)runlist.get(i)).getFailTimes();
+		}
+
+		long endTime = System.currentTimeMillis();
+
+		long usedTime = endTime - beginTime;
+
+		double writePerSeconds = ( totalWriteTimes * 1000.0 ) / usedTime;
+		double readPerSeconds = ( totalReadTimes * 1000.0 ) / usedTime;
+
+		System.out.println( "\nTotal used Time: " + usedTime + "(ms), Write "
+				+ totalWriteTimes + " (" + writePerSeconds + "), "
+				+ "Read " + totalReadTimes + " (" + readPerSeconds + "), Fail " + totalFailTimes );
 	}
 
 	public static void main( String [] args ) {
@@ -102,8 +146,11 @@ public class TestStress {
 			return;
 		}
 
-		TestStress testCase = new TestStress();
-		testCase.test( args );
+		try {
+			TestStress testCase = new TestStress();
+			testCase.test( args );
+		} catch ( Exception e ) {
+		}
 	}
 
 };
