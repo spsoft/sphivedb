@@ -58,5 +58,18 @@ public class SPHiveDBClient {
 
 		return protocol.execute( dbfile, user, dbname, sql );
 	}
+
+	public int remove( int dbfile, String user, String dbname ) {
+
+		EndPointTable.EndPoint endpoint = mEndPointTable.getByKey( dbfile );
+
+		if( null == endpoint ) return -1;
+
+		String url = "http://" + endpoint.getIP() + ":" + endpoint.getPort() + "/sphivedb";
+
+		SPHiveDBProtocol protocol = new SPHiveDBProtocol( url );
+
+		return protocol.remove( dbfile, user, dbname );
+	}
 };
 

@@ -143,6 +143,8 @@ public class TestStress {
 	public static void main( String [] args ) {
 		if( 4 != args.length ) {
 			System.out.println( "Usage: TestStress <config file> <client count> <read times> <write times>" );
+			System.out.println( "\tjava -cp sphivedbcli.jar:3rdlib/json.jar sphivedbcli.TestStress "
+					+ "../../sphivedb/sphivedbcli.ini 8 100 100" );
 			return;
 		}
 
