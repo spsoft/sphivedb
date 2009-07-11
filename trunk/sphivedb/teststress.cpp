@@ -186,6 +186,8 @@ int main( int argc, char * argv[] )
 		pthread_join( thrlist[i], NULL );
 	}
 
+	free( thrlist );
+
 	printf( "\n" );
 
 	int usedTime = clock.getAge();

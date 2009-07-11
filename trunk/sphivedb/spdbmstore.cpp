@@ -317,7 +317,7 @@ int SP_DbmStoreManager :: load( SP_HiveReqObject * req, SP_HiveStore * store )
 
 int SP_DbmStoreManager :: save( SP_HiveReqObject * req, SP_HiveStore * store )
 {
-	int ret = 0;
+	int ret = -1;
 
 	char path[ 256 ] = { 0 };
 	getPath( req->getDBFile(), req->getDBName(), path, sizeof( path ) );
@@ -329,10 +329,11 @@ int SP_DbmStoreManager :: save( SP_HiveReqObject * req, SP_HiveStore * store )
 		spmemvfs_db_t * db = (spmemvfs_db_t*)store->getArgs();
 
 		if( NULL != db->mem->data ) {
-			if( ! sp_tcadbput( dbmStore->getDbm(), req->getUser(),
+			if( sp_tcadbput( dbmStore->getDbm(), req->getUser(),
 					strlen( req->getUser() ), db->mem->data, db->mem->used ) ) {
+				ret = 0;
+			} else {
 				SP_NKLog::log( LOG_ERR, "ERROR: tcadbput %s fail", req->getUser() );
-				ret = -1;
 			}
 		}
 
@@ -353,5 +354,26 @@ int SP_DbmStoreManager :: close( SP_HiveStore * store )
 	store->setHandle( NULL );
 
 	return 0;
+}
+
+int SP_DbmStoreManager :: remove( SP_HiveReqObject * req )
+{
+	int ret = -1;
+
+	char path[ 256 ] = { 0 };
+	getPath( req->getDBFile(), req->getDBName(), path, sizeof( path ) );
+
+	SP_DbmStore * dbmStore = mCache->get( path );
+
+	if( NULL != dbmStore ) {
+		if( sp_tcadbout( dbmStore->getDbm(), req->getUser(), strlen( req->getUser() ) ) ) {
+			ret = 0;
+		} else {
+			ret = 1;
+			SP_NKLog::log( LOG_ERR, "ERROR: tcadbout %s fail, no record", req->getUser() );
+		}
+	}
+
+	return ret;
 }
 

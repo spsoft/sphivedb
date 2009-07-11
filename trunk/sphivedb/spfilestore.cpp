@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <errno.h>
+#include <string.h>
 
 #include "spfilestore.hpp"
 
@@ -79,6 +81,24 @@ int SP_FileStoreManager :: close( SP_HiveStore * store )
 	store->setHandle( NULL );
 
 	return ret;
+}
+
+int SP_FileStoreManager :: remove( SP_HiveReqObject * req )
+{
+	char dpath[ 256 ] = { 0 }, fpath[ 256] = { 0 };
+	getPath( req, dpath, sizeof( dpath ), fpath, sizeof( fpath ) );
+
+	if( 0 != access( fpath, F_OK ) ) {
+		return 1;
+	}
+
+	if( 0 != unlink( fpath ) ) {
+		SP_NKLog::log( LOG_ERR, "unlink %s fail, errno %d, %s",
+				fpath, errno, strerror( errno ) );
+		return -1;
+	}
+
+	return 0;
 }
 
 int SP_FileStoreManager :: getPath( SP_HiveReqObject * req,

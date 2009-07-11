@@ -81,6 +81,8 @@ public:
 
 	virtual int close( SP_HiveStore * store );
 
+	virtual int remove( SP_HiveReqObject * req );
+
 private:
 	const char * getPath( int dbfile, const char * dbname,
 			char * path, int size );

@@ -35,6 +35,8 @@ public:
 	int execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * result,
 			SP_JsonObjectNode * errdata );
 
+	int remove( SP_JsonRpcReqObject * rpcReq, SP_JsonObjectNode * errdata );
+
 private:
 
 	int checkReq( SP_HiveReqObject * reqObject, SP_JsonObjectNode * errdata );

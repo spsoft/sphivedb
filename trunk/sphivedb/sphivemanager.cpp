@@ -95,6 +95,39 @@ int SP_HiveManager :: checkReq( SP_HiveReqObject * reqObject,
 	return 0;
 }
 
+int SP_HiveManager :: remove( SP_JsonRpcReqObject * rpcReq, SP_JsonObjectNode * errdata )
+{
+	int ret = 0;
+
+	SP_HiveReqObject reqObject( rpcReq );
+
+	if( 0 != checkReq( &reqObject, errdata ) ) return -1;
+
+	int dbfile = reqObject.getDBFile();
+	const char * user = reqObject.getUser();
+	const char * dbname = reqObject.getDBName();
+
+	char key4lock[ 128 ] = { 0 };
+	snprintf( key4lock, sizeof( key4lock ), "%s/%s", user, dbname );
+
+	SP_NKTokenLockGuard lockGuard( mLockManager );
+
+	if( 0 != lockGuard.lock( key4lock, mConfig->getLockTimeoutSeconds() * 1000 ) ) {
+		SP_JsonRpcUtils::setError( errdata, -1, "lock fail" );
+
+		SP_NKLog::log( LOG_ERR, "ERROR: Lock %s fail", user );
+		return -1;
+	}
+
+	ret = mStoreManager->remove( &reqObject );
+
+	if( ret < 0 ) {
+		SP_JsonRpcUtils::setError( errdata, -1, "remove store fail" );
+	}
+
+	return ret;
+}
+
 int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq,
 		SP_JsonArrayNode * result, SP_JsonObjectNode * errdata )
 {

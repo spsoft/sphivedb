@@ -37,7 +37,7 @@ TARGET = libsphivedbcli.so libsphivedbcli.a \
 		sphivedbsvr spsqlitesvr sqlite
 
 TEST_TARGET = testmemvfs testmsg testmanager testcli testschema \
-		testconfig testsqlite teststress
+		testconfig testsqlite teststress testremove
 
 #--------------------------------------------------------------------
 
@@ -70,6 +70,9 @@ testmanager: testmanager.o sphivemanager.o sphivemsg.o \
 	$(LINKER) -o $@ $^ $(HIVEDBSVR_LIB)
 
 testcli: testcli.o
+	$(LINKER) -o $@ $^ $(COMMON_LIB) -L. -lsphivedbcli
+
+testremove: testremove.o
 	$(LINKER) -o $@ $^ $(COMMON_LIB) -L. -lsphivedbcli
 
 teststress: teststress.o
