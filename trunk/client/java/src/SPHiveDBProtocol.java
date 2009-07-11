@@ -30,19 +30,22 @@ public class SPHiveDBProtocol {
 		mUrl = url;
 	}
 
-	protected String getExecuteReq( int dbfile, String user, String dbname, String [] sql ) {
+	protected String makeReq( String method, int dbfile, String user,
+			String dbname, String [] sql ) {
 		JSONObject params = new JSONObject();
 		{
 			params.put( "dbfile", dbfile );
 			params.put( "user", user );
 			params.put( "dbname", dbname );
 
-			JSONArray sqlArray = new JSONArray();
-			for( int i = 0; i < sql.length; i++ ) {
-				sqlArray.put( sql[i] );
-			}
+			if( null != sql ) {
+				JSONArray sqlArray = new JSONArray();
+				for( int i = 0; i < sql.length; i++ ) {
+					sqlArray.put( sql[i] );
+				}
 
-			params.put( "sql", sqlArray );
+				params.put( "sql", sqlArray );
+			}
 		}
 
 		JSONArray paramsArray = new JSONArray();
@@ -50,7 +53,7 @@ public class SPHiveDBProtocol {
 
 		JSONObject req = new JSONObject();
 		req.put( "id", "" + System.currentTimeMillis() );
-		req.put( "method", "execute" );
+		req.put( "method", method );
 		req.put( "params", paramsArray );
 
 		return req.toString();
@@ -62,7 +65,7 @@ public class SPHiveDBProtocol {
 		HttpURLConnection conn = null;
 
 		try {
-			String req = getExecuteReq( dbfile, user, dbname, sql );
+			String req = makeReq( "execute", dbfile, user, dbname, sql );
 
 			URL urlObj = new URL( mUrl );
 
@@ -106,6 +109,61 @@ public class SPHiveDBProtocol {
 		}
 
 		return null;
+	}
+
+	public int remove( int dbfile, String user, String dbname ) {
+
+		HttpURLConnection conn = null;
+
+		try {
+			String req = makeReq( "remove", dbfile, user, dbname, null );
+
+			URL urlObj = new URL( mUrl );
+
+			conn = (HttpURLConnection) urlObj.openConnection();
+
+			conn.setDoOutput(true);
+			conn.setRequestMethod( "POST" );
+
+			OutputStream output = conn.getOutputStream();
+			output.write( req.getBytes( "US-ASCII" ) );
+			output.close();
+
+			conn.connect();
+
+			InputStream input = conn.getInputStream();
+			BufferedReader reader =
+					new BufferedReader(new InputStreamReader(input));
+			StringBuffer buffer = new StringBuffer();
+			String line = null;
+
+			while (null != (line = reader.readLine())) {
+				buffer.append(line);
+			}
+
+			conn.disconnect();
+			conn = null;
+
+			JSONTokener tokener = new JSONTokener( buffer.toString() );
+
+			JSONObject respObj = (JSONObject)tokener.nextValue();
+
+			String result = respObj.optString( "result" );
+
+			return null != respObj ? Integer.parseInt( result ) : -1;
+		} catch (Exception e) {
+			_logger.log(Level.WARNING, "ERROR", e);
+
+			if( null != conn ) {
+				try {
+					conn.disconnect();
+				} catch( Exception e1 ) {
+					_logger.log(Level.WARNING, "ERROR", e1);
+				}
+			}
+		}
+
+		return -1;
 	}
 };
 
