@@ -22,6 +22,8 @@ int sp_tcadbput( void * adb, const void *kbuf, int ksiz, const void *vbuf, int v
 
 void * sp_tcadbget( void * adb, const void *kbuf, int ksiz, int *sp );
 
+int sp_tcadbout( void * adb, const void *kbuf, int ksiz );
+
 #ifdef __cplusplus
 }
 #endif

@@ -17,6 +17,8 @@ public:
 
 	const char * verify();
 
+	const char * verifyWithoutSql();
+
 	int getDBFile();
 
 	const char * getUser();

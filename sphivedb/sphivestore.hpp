@@ -35,6 +35,9 @@ public:
 	virtual int save( SP_HiveReqObject * req, SP_HiveStore * store ) = 0;
 
 	virtual int close( SP_HiveStore * store ) = 0;
+
+	// @return -1 : Fail, 0 : OK, 1 : No record
+	virtual int remove( SP_HiveReqObject * req ) = 0;
 };
 
 #endif

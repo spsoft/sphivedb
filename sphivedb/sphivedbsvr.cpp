@@ -20,6 +20,7 @@
 
 #include "spserver/spserver.hpp"
 #include "spserver/splfserver.hpp"
+#include "spserver/spdispatcher.hpp"
 #include "spserver/spporting.hpp"
 #include "spserver/spioutils.hpp"
 
@@ -30,13 +31,12 @@
 void showUsage( const char * program )
 {
 	printf( "\nUsage: %s [-h <ip>] [-p <port>] [-d] [-f <config>]\n"
-			"\t[-s <server mode>] [-x <loglevel>] [-d] [-v]\n", program );
+			"\t[-x <loglevel>] [-d] [-v]\n", program );
 	printf( "\n" );
 	printf( "\t-h <ip> listen ip, default is 0.0.0.0\n" );
 	printf( "\t-p <port> listen port\n" );
 	printf( "\t-d run as daemon\n" );
 	printf( "\t-f <config> config file, default is ./sphivedbsvr.ini\n" );
-	printf( "\t-s <server mode> hahs/lf, half-async/half-sync, leader/follower, default is hahs\n" );
 	printf( "\t-x <loglevel> syslog level\n" );
 	printf( "\t-v help\n" );
 	printf( "\n" );
@@ -136,24 +136,36 @@ int main( int argc, char * argv[] )
 	SP_HttpHandlerAdapterFactory * factory =
 			new SP_HttpHandlerAdapterFactory( new SP_HiveHandlerFactory( &manager ) );
 
-	if( 0 == strcasecmp( serverMode, "hahs" ) ) {
-		SP_Server server( "", port, factory );
+	int maxConnections = serverConfig->getMaxConnections(),
+			reqQueueSize = serverConfig->getMaxReqQueueSize();
+	const char * refusedMsg = "HTTP/1.1 500 Sorry, server is busy now!\r\n";
 
-		server.setMaxConnections( serverConfig->getMaxConnections() );
-		server.setTimeout( serverConfig->getSocketTimeout() );
-		server.setMaxThreads( serverConfig->getMaxThreads() );
-		server.setReqQueueSize( serverConfig->getMaxReqQueueSize(), "HTTP/1.1 500 Sorry, server is busy now!\r\n" );
+	int listenFd = -1;
+	if( 0 == SP_IOUtils::tcpListen( "", port, &listenFd ) ) {
+		SP_Dispatcher dispatcher( new SP_DefaultCompletionHandler(),
+				serverConfig->getMaxThreads() );
+		dispatcher.setTimeout( serverConfig->getSocketTimeout() );
+		dispatcher.dispatch();
 
-		server.runForever();
-	} else {
-		SP_LFServer server( "", port, factory );
+		for( ; ; ) {
+			struct sockaddr_in addr;
+			socklen_t socklen = sizeof( addr );
+			int fd = accept( listenFd, (struct sockaddr*)&addr, &socklen );
 
-		server.setMaxConnections( serverConfig->getMaxConnections() );
-		server.setTimeout( serverConfig->getSocketTimeout() );
-		server.setMaxThreads( serverConfig->getMaxThreads() );
-		server.setReqQueueSize( serverConfig->getMaxReqQueueSize(), "HTTP/1.1 500 Sorry, server is busy now!\r\n" );
+			if( fd >= 0 ) {
+				if( dispatcher.getSessionCount() >= maxConnections
+						|| dispatcher.getReqQueueLength() >= reqQueueSize ) {
+					write( fd, refusedMsg, strlen( refusedMsg ) );
+					close( fd );
+				} else {
+					dispatcher.push( fd, factory->create() );
+				}
+			} else {
+				continue;
+			}
+		}
 
-		server.runForever();
+		dispatcher.shutdown();
 	}
 
 	spmemvfs_env_fini();

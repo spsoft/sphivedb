@@ -33,12 +33,14 @@ void SP_HiveHandler :: handle( SP_HttpRequest * request, SP_HttpResponse * respo
 
 	int ret = -1;
 
-	SP_JsonArrayNode result;
+	SP_JsonNode * result = NULL;
 	SP_JsonObjectNode error;
 
 	if( NULL == rpcReq.getPacketError() ) {
 		if( 0 == strcasecmp( rpcReq.getMethod(), "execute" ) ) {
 			ret = doExecute( &rpcReq, &result, &error );
+		} else if( 0 == strcasecmp( rpcReq.getMethod(), "remove" ) ) {
+			ret = doRemove( &rpcReq, &result, &error );
 		} else {
 			SP_JsonRpcUtils::setError( &error,
 					SP_JsonRpcUtils::eMethodNoFound, "Method not found." );
@@ -51,12 +53,14 @@ void SP_HiveHandler :: handle( SP_HttpRequest * request, SP_HttpResponse * respo
 	SP_JsonStringBuffer respBuffer;
 
 	if( 0 == ret ) {
-		SP_JsonRpcUtils::toRespBuffer( rpcReq.getID(), &result,
+		SP_JsonRpcUtils::toRespBuffer( rpcReq.getID(), result,
 				NULL, &respBuffer );
 	} else {
 		SP_JsonRpcUtils::toRespBuffer( rpcReq.getID(), NULL,
 				&error, &respBuffer );
 	}
+
+	if( NULL != result ) delete result;
 
 	response->setStatusCode( 200 );
 
@@ -64,7 +68,7 @@ void SP_HiveHandler :: handle( SP_HttpRequest * request, SP_HttpResponse * respo
 	response->directSetContent( respBuffer.takeBuffer(), len );
 }
 
-int SP_HiveHandler :: doExecute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * result,
+int SP_HiveHandler :: doExecute( SP_JsonRpcReqObject * rpcReq, SP_JsonNode ** result,
 			SP_JsonObjectNode * error )
 {
 	int ret = -1;
@@ -83,10 +87,45 @@ int SP_HiveHandler :: doExecute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode 
 	}
 
 	if( NULL == errmsg ) {
-		ret = mManager->execute( rpcReq, result, errdata );
+		*result = new SP_JsonArrayNode();
+		ret = mManager->execute( rpcReq, (SP_JsonArrayNode*)*result, errdata );
 		if( 0 != ret ) {
 			SP_JsonRpcUtils::setError( error,
 				SP_JsonRpcUtils::eInternalError, "Internal error." );
+		}
+	} else {
+		SP_JsonRpcUtils::setError( error, SP_JsonRpcUtils::eInvalidParams, errmsg );
+	}
+
+	return ret;
+}
+
+int SP_HiveHandler :: doRemove( SP_JsonRpcReqObject * rpcReq, SP_JsonNode ** result,
+		SP_JsonObjectNode * error )
+{
+	int ret = -1;
+
+	SP_HiveReqObject reqObject( rpcReq );
+
+	const char * errmsg = reqObject.verifyWithoutSql();
+
+	SP_JsonObjectNode * errdata = new SP_JsonObjectNode();
+	{
+		SP_JsonPairNode * dataPair = new SP_JsonPairNode();
+		dataPair->setName( "data" );
+		dataPair->setValue( errdata );
+
+		error->addValue( dataPair );
+	}
+
+	if( NULL == errmsg ) {
+		ret = mManager->remove( rpcReq, errdata );
+		if( ret < 0 ) {
+			SP_JsonRpcUtils::setError( error,
+				SP_JsonRpcUtils::eInternalError, "Internal error." );
+		} else {
+			*result = new SP_JsonIntNode( ret );
+			ret = 0;
 		}
 	} else {
 		SP_JsonRpcUtils::setError( error, SP_JsonRpcUtils::eInvalidParams, errmsg );

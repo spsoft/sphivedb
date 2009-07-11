@@ -37,3 +37,8 @@ void * sp_tcadbget( void * adb, const void *kbuf, int ksiz, int *sp )
 	return tcadbget( adb, kbuf, ksiz, sp );
 }
 
+int sp_tcadbout( void * adb, const void *kbuf, int ksiz )
+{
+	return tcadbout( adb, kbuf, ksiz );
+}
+

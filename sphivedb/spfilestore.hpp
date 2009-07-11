@@ -24,6 +24,8 @@ public:
 
 	virtual int close( SP_HiveStore * store );
 
+	virtual int remove( SP_HiveReqObject * req );
+
 private:
 	int getPath( SP_HiveReqObject * req, char * dpath, int dsize,
 			char  * fpath, int fsize );

@@ -24,6 +24,7 @@
 #include "spjson/spjsonrpc.hpp"
 #include "spjson/spjsonnode.hpp"
 #include "spjson/spjsonutils.hpp"
+#include "spjson/spjsonhandle.hpp"
 
 typedef struct tagSP_HiveDBClientConfigImpl {
 	SP_NKEndPointTableConfig * mEndPointTableConfig;
@@ -155,8 +156,49 @@ SP_HiveDBProtocol :: SP_HiveDBProtocol( SP_NKSocket * socket, int isKeepAlive )
 	mIsKeepAlive = isKeepAlive;
 }
 
-SP_HiveDBProtocol :: SP_HiveDBProtocol()
+SP_HiveDBProtocol :: ~SP_HiveDBProtocol()
 {
+}
+
+int SP_HiveDBProtocol :: makeArgs( SP_JsonObjectNode * args, int dbfile, const char * user,
+		const char * dbname )
+{
+	SP_JsonPairNode * dbfilePair = new SP_JsonPairNode();
+	dbfilePair->setName( "dbfile" );
+	dbfilePair->setValue( new SP_JsonIntNode( dbfile ) );
+
+	args->addValue( dbfilePair );
+
+	SP_JsonPairNode * userPair = new SP_JsonPairNode();
+	userPair->setName( "user" );
+	userPair->setValue( new SP_JsonStringNode( user ) );
+
+	args->addValue( userPair );
+
+	SP_JsonPairNode * dbnamePair = new SP_JsonPairNode();
+	dbnamePair->setName( "dbname" );
+	dbnamePair->setValue( new SP_JsonStringNode( dbname ) );
+
+	args->addValue( dbnamePair );
+
+	return 0;
+}
+
+int SP_HiveDBProtocol :: clientCall( SP_NKSocket * socket, int isKeepAlive,
+		SP_JsonStringBuffer * reqBuff, SP_NKHttpResponse * httpResp )
+{
+	SP_NKHttpRequest httpReq;
+	{
+		httpReq.setMethod( "POST" );
+		httpReq.setURI( "/sphivedb" );
+		httpReq.setVersion( "HTTP/1.1" );
+		if( isKeepAlive ) httpReq.addHeader( "Connection", "Keep-Alive" );
+		httpReq.addHeader( "Host", "127.0.0.1" );
+
+		httpReq.appendContent( reqBuff->getBuffer(), reqBuff->getSize() );
+	}
+
+	return SP_NKHttpProtocol::post( socket, &httpReq, httpResp );
 }
 
 SP_HiveRespObject * SP_HiveDBProtocol :: execute( int dbfile, const char * user,
@@ -166,23 +208,7 @@ SP_HiveRespObject * SP_HiveDBProtocol :: execute( int dbfile, const char * user,
 	{
 		SP_JsonObjectNode * args = new SP_JsonObjectNode();
 
-		SP_JsonPairNode * dbfilePair = new SP_JsonPairNode();
-		dbfilePair->setName( "dbfile" );
-		dbfilePair->setValue( new SP_JsonIntNode( dbfile ) );
-
-		args->addValue( dbfilePair );
-
-		SP_JsonPairNode * userPair = new SP_JsonPairNode();
-		userPair->setName( "user" );
-		userPair->setValue( new SP_JsonStringNode( user ) );
-
-		args->addValue( userPair );
-
-		SP_JsonPairNode * dbnamePair = new SP_JsonPairNode();
-		dbnamePair->setName( "dbname" );
-		dbnamePair->setValue( new SP_JsonStringNode( dbname ) );
-
-		args->addValue( dbnamePair );
+		makeArgs( args, dbfile, user, dbname );
 
 		SP_JsonArrayNode * sqlNode = new SP_JsonArrayNode();
 
@@ -203,22 +229,12 @@ SP_HiveRespObject * SP_HiveDBProtocol :: execute( int dbfile, const char * user,
 
 	SP_JsonRpcUtils::toReqBuffer( "execute", user, &params, &buffer );
 
-	SP_NKHttpRequest httpReq;
-	{
-		httpReq.setMethod( "POST" );
-		httpReq.setURI( "/sphivedb" );
-		httpReq.setVersion( "HTTP/1.1" );
-		if( mIsKeepAlive ) httpReq.addHeader( "Connection", "Keep-Alive" );
-		httpReq.addHeader( "Host", "127.0.0.1" );
-
-		httpReq.appendContent( buffer.getBuffer(), buffer.getSize() );
-	}
-
 	SP_HiveRespObject * resp = NULL;
 
 	SP_NKHttpResponse httpResp;
 
-	int ret = SP_NKHttpProtocol::post( mSocket, &httpReq, &httpResp );
+	int ret = clientCall( mSocket, mIsKeepAlive, &buffer, &httpResp );
+
 	if( 0 == ret ) {
 		SP_JsonRpcRespObject * inner = new SP_JsonRpcRespObject(
 				(char*)httpResp.getContent(), httpResp.getContentLength() );
@@ -226,5 +242,38 @@ SP_HiveRespObject * SP_HiveDBProtocol :: execute( int dbfile, const char * user,
 	}
 
 	return resp;
+}
+
+int SP_HiveDBProtocol :: remove( int dbfile, const char * user,
+		const char * dbname )
+{
+	SP_JsonArrayNode params;
+	{
+		SP_JsonObjectNode * args = new SP_JsonObjectNode();
+
+		makeArgs( args, dbfile, user, dbname );
+
+		params.addValue( args );
+	}
+
+	SP_JsonStringBuffer buffer;
+
+	SP_JsonRpcUtils::toReqBuffer( "remove", user, &params, &buffer );
+
+	SP_NKHttpResponse httpResp;
+
+	int ret = clientCall( mSocket, mIsKeepAlive, &buffer, &httpResp );
+
+	if( 0 == ret ) {
+		SP_JsonRpcRespObject respObj( (char*)httpResp.getContent(),
+				httpResp.getContentLength() );
+
+		SP_JsonHandle handle( respObj.getResult() );
+		SP_JsonIntNode * result = handle.toInt();
+
+		ret = ( NULL != result ) ? result->getValue() : -1;
+	}
+
+	return ret;
 }
 

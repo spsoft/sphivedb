@@ -15,6 +15,10 @@ class SP_HiveRespObject;
 
 class SP_NKEndPointTableConfig;
 class SP_NKSocketPoolConfig;
+class SP_NKHttpResponse;
+
+class SP_JsonObjectNode;
+class SP_JsonStringBuffer;
 
 typedef struct tagSP_HiveDBClientConfigImpl SP_HiveDBClientConfigImpl_t;
 typedef struct tagSP_HiveDBClientImpl SP_HiveDBClientImpl_t;
@@ -44,6 +48,11 @@ public:
 	SP_HiveRespObject * execute( int dbfile, const char * user, const char * dbname,
 			SP_NKStringList * sql );
 
+	int remove( int dbfile, const char * user, const char * dbname );
+
+	int get( int dbfile, const char * user, const char * dbname,
+			struct iovec * buff );
+
 private:
 	SP_NKSocket * getSocket( int dbfile );
 
@@ -56,10 +65,23 @@ public:
 
 	SP_HiveDBProtocol( SP_NKSocket * socket, int isKeepAlive );
 
-	SP_HiveDBProtocol();
+	~SP_HiveDBProtocol();
 
 	SP_HiveRespObject * execute( int dbfile, const char * user, const char * dbname,
 			SP_NKStringList * sql );
+
+	int remove( int dbfile, const char * user, const char * dbname );
+
+	int get( int dbfile, const char * user, const char * dbname,
+			struct iovec * buff );
+
+private:
+
+	static int makeArgs( SP_JsonObjectNode * args, int dbfile, const char * user,
+			const char * dbname );
+
+	static int clientCall( SP_NKSocket * socket, int isKeepAlive,
+			SP_JsonStringBuffer * reqBuff, SP_NKHttpResponse * httpResp );
 
 private:
 	SP_NKSocket * mSocket;

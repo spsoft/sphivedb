@@ -39,6 +39,21 @@ const char * SP_HiveReqObject :: verify()
 	return ret;
 }
 
+const char * SP_HiveReqObject :: verifyWithoutSql()
+{
+	const char * ret = NULL;
+
+	if( getDBFile() < 0 ) {
+		ret = "invalid params, not dbfile property";
+	} else if( NULL == getUser() ) {
+		ret = "invalid params, not user property";
+	} else if( NULL == getDBName() ) {
+		ret = "invalid params, not dbname property";
+	}
+
+	return ret;
+}
+
 int SP_HiveReqObject :: getDBFile()
 {
 	SP_JsonHandle handle( mInner->getParams() );
