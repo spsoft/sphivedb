@@ -11,14 +11,14 @@
 class SP_HiveConfig;
 class SP_HiveReqObject;
 
-class SP_FileStoreManager : public SP_HiveStoreManager {
+class SP_FileStoreSource : public SP_HiveStoreSource {
 public:
-	SP_FileStoreManager();
-	virtual ~SP_FileStoreManager();
+	SP_FileStoreSource();
+	virtual ~SP_FileStoreSource();
 
 	int init( SP_HiveConfig * config );
 
-	virtual int load( SP_HiveReqObject * req, SP_HiveStore * store );
+	virtual SP_HiveStore * load( SP_HiveReqObject * req );
 
 	virtual int save( SP_HiveReqObject * req, SP_HiveStore * store );
 

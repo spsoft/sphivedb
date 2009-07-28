@@ -8,6 +8,12 @@ LIBEVENT_LIB  = -L$(HOME)/libevent -levent -lrt
 TC_LIB = -L$(HOME)/tokyocabinet -ltokyocabinet -lm -lbz2 -lz
 TC_INCL = -I$(HOME)/tokyocabinet
 
+#-------------------Cprof related Macros----------------
+ifeq ($(cprof), 1)
+	CFLAGS += -finstrument-functions
+	LDFLAGS += -lcprof
+endif
+
 #--------------------------------------------------------------------
 
 CFLAGS += -I../ $(TC_INCL)
@@ -50,7 +56,7 @@ libsphivedbcli.a: $(LIBOBJS)
 	$(AR) $@ $^
 
 sphivedbsvr: $(HIVEDBSVR_OBJS) spsqlite.o
-	$(LINKER) -o $@ $^ -static $(HIVEDBSVR_LIB) -L. -lsphivedbcli
+	$(LINKER) -o $@ $^ $(HIVEDBSVR_LIB) -L. -lsphivedbcli
 
 spsqlitesvr: $(SQLITESVR_OBJS) spsqlite.o
 	$(LINKER) -o $@ $^ -static $(SQLITESVR_LIB) -L. -lsphivedbcli
@@ -87,7 +93,15 @@ testconfig: testconfig.o sphiveconfig.o
 testsqlite: testsqlite.o spsqlite.o
 	$(LINKER) -o $@ $^ -lpthread -ldl -lstdc++
 
+testmysql: testmysql.o
+	$(LINKER) -o $@ $^ -L/usr/lib -lmysqlclient -L../spnetkit -lspnetkit \
+		-lpthread -lstdc++
+
+testmysql.o: CFLAGS += -I/usr/local/include/mysql
+
 spcabinet.o: CFLAGS += -std=c99
+
+#spsqlite.o: CFLAGS += -O2
 
 clean:
 	@( $(RM) *.o vgcore.* core core.* $(TARGET) $(TEST_TARGET) )

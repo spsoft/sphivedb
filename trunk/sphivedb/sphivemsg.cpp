@@ -16,6 +16,7 @@
 SP_HiveReqObject :: SP_HiveReqObject( SP_JsonRpcReqObject * inner )
 {
 	mInner = inner;
+	mUniqKey[0] = '\0';
 }
 
 SP_HiveReqObject :: ~SP_HiveReqObject()
@@ -97,6 +98,15 @@ const char * SP_HiveReqObject :: getSql( int index )
 	SP_JsonStringNode * node = handle.getChild( 0 ).getChild( "sql" ).getChild( index ).toString();
 
 	return NULL != node ? node->getValue() : NULL;
+}
+
+const char * SP_HiveReqObject :: getUniqKey()
+{
+	if( '\0' == mUniqKey[0] ) {
+		snprintf( mUniqKey, sizeof( mUniqKey ), "%d/%s/%s", getDBFile(), getUser(), getDBName() );
+	}
+
+	return mUniqKey;
 }
 
 //====================================================================

@@ -103,16 +103,11 @@ int SP_HiveManager :: remove( SP_JsonRpcReqObject * rpcReq, SP_JsonObjectNode * 
 
 	if( 0 != checkReq( &reqObject, errdata ) ) return -1;
 
-	int dbfile = reqObject.getDBFile();
 	const char * user = reqObject.getUser();
-	const char * dbname = reqObject.getDBName();
-
-	char key4lock[ 128 ] = { 0 };
-	snprintf( key4lock, sizeof( key4lock ), "%s/%s", user, dbname );
 
 	SP_NKTokenLockGuard lockGuard( mLockManager );
 
-	if( 0 != lockGuard.lock( key4lock, mConfig->getLockTimeoutSeconds() * 1000 ) ) {
+	if( 0 != lockGuard.lock( reqObject.getUniqKey(), mConfig->getLockTimeoutSeconds() * 1000 ) ) {
 		SP_JsonRpcUtils::setError( errdata, -1, "lock fail" );
 
 		SP_NKLog::log( LOG_ERR, "ERROR: Lock %s fail", user );
@@ -141,26 +136,22 @@ int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq,
 	const char * user = reqObject.getUser();
 	const char * dbname = reqObject.getDBName();
 
-	char key4lock[ 128 ] = { 0 };
-	snprintf( key4lock, sizeof( key4lock ), "%s/%s", user, dbname );
-
 	SP_NKTokenLockGuard lockGuard( mLockManager );
 
-	if( 0 != lockGuard.lock( key4lock, mConfig->getLockTimeoutSeconds() * 1000 ) ) {
+	if( 0 != lockGuard.lock( reqObject.getUniqKey(), mConfig->getLockTimeoutSeconds() * 1000 ) ) {
 		SP_JsonRpcUtils::setError( errdata, -1, "lock fail" );
 
 		SP_NKLog::log( LOG_ERR, "ERROR: Lock %s fail", user );
 		return -1;
 	}
 
-	SP_HiveStore store;
+	SP_HiveStore * store = mStoreManager->load( &reqObject );
 
-	ret = mStoreManager->load( &reqObject, &store );
-
-	if( 0 == ret ) {
-		ret = mSchemaManager->ensureSchema( store.getHandle(), dbname );
+	if( NULL != store ) {
+		ret = mSchemaManager->ensureSchema( store->getHandle(), dbname );
 		if( 0 != ret ) SP_JsonRpcUtils::setError( errdata, -1, "ensure schema fail" );
 	} else {
+		ret = -1;
 		SP_JsonRpcUtils::setError( errdata, -1, "load store fail" );
 	}
 
@@ -170,16 +161,16 @@ int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq,
 	if( 0 == ret ) {
 		int dbRet = 0;
 
-		dbRet = SP_HiveSchemaManager::execWithLog( store.getHandle(), "BEGIN" );
+		dbRet = SP_HiveSchemaManager::execWithLog( store->getHandle(), "BEGIN" );
 
 		for( int i = 0; i < reqObject.getSqlCount(); i++ ) {
 			const char * sql = reqObject.getSql( i );
 			for( ; isspace( *sql ); ) sql++;
 
 			if( 0 == strncasecmp( "select", sql, 6 ) ) {
-				dbRet = doSelect( store.getHandle(), sql, result, errdata );
+				dbRet = doSelect( store->getHandle(), sql, result, errdata );
 			} else {
-				dbRet = doUpdate( store.getHandle(), sql, result, errdata );
+				dbRet = doUpdate( store->getHandle(), sql, result, errdata );
 				if( dbRet > 0 ) hasUpdate = 1;
 			}
 
@@ -190,17 +181,17 @@ int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq,
 		}
 
 		if( 0 == ret ) {
-			dbRet = SP_HiveSchemaManager::execWithLog( store.getHandle(), "COMMIT" );
+			dbRet = SP_HiveSchemaManager::execWithLog( store->getHandle(), "COMMIT" );
 		} else {
-			dbRet = SP_HiveSchemaManager::execWithLog( store.getHandle(), "ROLLBACK" );
+			dbRet = SP_HiveSchemaManager::execWithLog( store->getHandle(), "ROLLBACK" );
 		}
 	}
 
 	if( 0 == ret && hasUpdate ) {
-		ret = mStoreManager->save( &reqObject, &store );
+		ret = mStoreManager->save( &reqObject, store );
 	}
 
-	mStoreManager->close( &store );
+	mStoreManager->close( store );
 
 	SP_NKLog::log( LOG_DEBUG, "DEBUG: execute( %d, %s, %s, {%d} ) = %d",
 			dbfile, user, dbname,  reqObject.getSqlCount(), ret );

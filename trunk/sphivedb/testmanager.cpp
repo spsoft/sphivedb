@@ -79,8 +79,10 @@ int main( int argc, char * argv[] )
 
 	SP_NKTokenLockManager lockManager;
 
-	SP_DbmStoreManager storeManager;
-	storeManager.init( &config );
+	SP_DbmStoreSource storeSource;
+	storeSource.init( &config );
+
+	SP_HiveStoreManager storeManager( &storeSource, config.getMaxOpenDBs() );
 
 	SP_HiveManager manager;
 	manager.init( &config, &lockManager, &storeManager );

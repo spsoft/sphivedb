@@ -144,7 +144,7 @@ int main( int argc, char * argv[] )
 			case 'o':
 				SP_NKLog::setLogLevel( LOG_DEBUG );
 				SP_NKLog::init4test( "teststress" );
-				SP_NKSocket::setLogSocketDefault( 1 );
+				//SP_NKSocket::setLogSocketDefault( 1 );
 				break;
 			case '?' :
 			case 'v' :
