@@ -19,30 +19,32 @@
 #include "spnetkit/spnklog.hpp"
 #include "spserver/spporting.hpp"
 
-SP_FileStoreManager :: SP_FileStoreManager()
+SP_FileStoreSource :: SP_FileStoreSource()
 {
 }
 
-SP_FileStoreManager :: ~SP_FileStoreManager()
+SP_FileStoreSource :: ~SP_FileStoreSource()
 {
 }
 
-int SP_FileStoreManager :: init( SP_HiveConfig * config )
+int SP_FileStoreSource :: init( SP_HiveConfig * config )
 {
 	mConfig = config;
 
 	return 0;
 }
 
-int SP_FileStoreManager :: load( SP_HiveReqObject * req, SP_HiveStore * store )
+SP_HiveStore * SP_FileStoreSource :: load( SP_HiveReqObject * req )
 {
+	SP_HiveStore * store = NULL;
+
 	char dpath[ 256 ] = { 0 }, fpath[ 256] = { 0 };
 	getPath( req, dpath, sizeof( dpath ), fpath, sizeof( fpath ) );
 
 	if( 0 != access( dpath, F_OK ) ) {
 		if( 0 != mkdir( dpath, 0700 ) ) {
 			SP_NKLog::log( LOG_ERR, "Cannot create data dir, %s", dpath );
-			return -1;
+			return NULL;
 		}
 	}
 
@@ -57,22 +59,23 @@ int SP_FileStoreManager :: load( SP_HiveReqObject * req, SP_HiveStore * store )
 	}
 
 	if( 0 == ret && NULL != handle ) {
+		store = new SP_HiveStore();
 		store->setHandle( handle );
 	} else {
 		if( NULL != handle ) sqlite3_close( handle );
 	}
 
-	return ret;
+	return store;
 }
 
-int SP_FileStoreManager :: save( SP_HiveReqObject * req, SP_HiveStore * store )
+int SP_FileStoreSource :: save( SP_HiveReqObject * req, SP_HiveStore * store )
 {
 	int ret = 0;
 
 	return ret;
 }
 
-int SP_FileStoreManager :: close( SP_HiveStore * store )
+int SP_FileStoreSource :: close( SP_HiveStore * store )
 {
 	int ret = 0;
 
@@ -83,7 +86,7 @@ int SP_FileStoreManager :: close( SP_HiveStore * store )
 	return ret;
 }
 
-int SP_FileStoreManager :: remove( SP_HiveReqObject * req )
+int SP_FileStoreSource :: remove( SP_HiveReqObject * req )
 {
 	char dpath[ 256 ] = { 0 }, fpath[ 256] = { 0 };
 	getPath( req, dpath, sizeof( dpath ), fpath, sizeof( fpath ) );
@@ -101,7 +104,7 @@ int SP_FileStoreManager :: remove( SP_HiveReqObject * req )
 	return 0;
 }
 
-int SP_FileStoreManager :: getPath( SP_HiveReqObject * req,
+int SP_FileStoreSource :: getPath( SP_HiveReqObject * req,
 		char * dpath, int dsize, char  * fpath, int fsize )
 {
 	snprintf( dpath, dsize, "%s/%d/%d", mConfig->getDataDir(),

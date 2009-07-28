@@ -119,11 +119,13 @@ int main( int argc, char * argv[] )
 
 	SP_NKTokenLockManager lockManager;
 
-	SP_DbmStoreManager storeManager;
-	if( 0 != storeManager.init( &config ) ) {
-		SP_NKLog::log( LOG_ERR, "Cannot init store manager" );
+	SP_DbmStoreSource storeSource;
+	if( 0 != storeSource.init( &config ) ) {
+		SP_NKLog::log( LOG_ERR, "Cannot init store source" );
 		return -1;
 	}
+
+	SP_HiveStoreManager storeManager( &storeSource, config.getMaxOpenDBs() );
 
 	SP_HiveManager manager;
 	if( 0 != manager.init( &config, &lockManager, &storeManager ) ) {

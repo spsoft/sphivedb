@@ -235,18 +235,18 @@ int SP_DbmStoreCache :: save( SP_DbmStore * file )
 
 //====================================================================
 
-SP_DbmStoreManager :: SP_DbmStoreManager()
+SP_DbmStoreSource :: SP_DbmStoreSource()
 {
 	mCache = NULL;
 	mConfig = NULL;
 }
 
-SP_DbmStoreManager :: ~SP_DbmStoreManager()
+SP_DbmStoreSource :: ~SP_DbmStoreSource()
 {
 	if( mCache ) delete mCache, mCache = NULL;
 }
 
-int SP_DbmStoreManager :: init( SP_HiveConfig * config )
+int SP_DbmStoreSource :: init( SP_HiveConfig * config )
 {
 	mConfig = config;
 
@@ -255,7 +255,7 @@ int SP_DbmStoreManager :: init( SP_HiveConfig * config )
 	return 0;
 }
 
-const char * SP_DbmStoreManager :: getPath( int dbfile,
+const char * SP_DbmStoreSource :: getPath( int dbfile,
 		const char * dbname, char * path, int size )
 {
 	snprintf( path, size, "%s/%d/%s.%d.tch", mConfig->getDataDir(),
@@ -264,33 +264,30 @@ const char * SP_DbmStoreManager :: getPath( int dbfile,
 	return path;
 }
 
-int SP_DbmStoreManager :: loadFromDbm( void * dbm, const char * user,
-		spmemvfs_db_t * db, const char * dbname )
+int SP_DbmStoreSource :: loadFromDbm( void * dbm, SP_HiveReqObject * req,
+		spmemvfs_db_t * db )
 {
 	spmembuffer_t * mem = (spmembuffer_t*)calloc( sizeof( spmembuffer_t ), 1 );
 
 	int vlen = 0;
-	void * vbuf = sp_tcadbget( dbm, user, strlen( user ), &vlen );
+	void * vbuf = sp_tcadbget( dbm, req->getUser(), strlen( req->getUser() ), &vlen );
 
 	if( NULL != vbuf ) {
 		mem->data = (char*)vbuf;
 		mem->used = mem->total = vlen;
 	}
 
-	char key4lock[ 128 ] = { 0 };
-	snprintf( key4lock, sizeof( key4lock ), "%s/%s", user, dbname );
-
-	if( 0 != spmemvfs_open_db( db, key4lock, mem ) ) {
-		SP_NKLog::log( LOG_ERR, "ERROR: cannot open db, %s", user );
+	if( 0 != spmemvfs_open_db( db, req->getUniqKey(), mem ) ) {
+		SP_NKLog::log( LOG_ERR, "ERROR: cannot open db, %s", req->getUniqKey() );
 		return -1;
 	}
 
 	return 0;
 }
 
-int SP_DbmStoreManager :: load( SP_HiveReqObject * req, SP_HiveStore * store )
+SP_HiveStore * SP_DbmStoreSource :: load( SP_HiveReqObject * req )
 {
-	int ret = -1;
+	SP_HiveStore * store = NULL;
 
 	char path[ 256 ] = { 0 };
 	getPath( req->getDBFile(), req->getDBName(), path, sizeof( path ) );
@@ -300,9 +297,10 @@ int SP_DbmStoreManager :: load( SP_HiveReqObject * req, SP_HiveStore * store )
 	if( NULL != dbmStore ) {
 		spmemvfs_db_t * db = (spmemvfs_db_t*)calloc( sizeof( spmemvfs_db_t ), 1 );
 
-		ret = loadFromDbm( dbmStore->getDbm(), req->getUser(), db, req->getDBName() );
+		int ret = loadFromDbm( dbmStore->getDbm(), req, db );
 
 		if( 0 == ret ) {
+			store = new SP_HiveStore();
 			store->setArgs( db );
 			store->setHandle( db->handle );
 		} else {
@@ -312,10 +310,10 @@ int SP_DbmStoreManager :: load( SP_HiveReqObject * req, SP_HiveStore * store )
 		mCache->save( dbmStore );
 	}
 
-	return ret;
+	return store;
 }
 
-int SP_DbmStoreManager :: save( SP_HiveReqObject * req, SP_HiveStore * store )
+int SP_DbmStoreSource :: save( SP_HiveReqObject * req, SP_HiveStore * store )
 {
 	int ret = -1;
 
@@ -343,7 +341,7 @@ int SP_DbmStoreManager :: save( SP_HiveReqObject * req, SP_HiveStore * store )
 	return ret;
 }
 
-int SP_DbmStoreManager :: close( SP_HiveStore * store )
+int SP_DbmStoreSource :: close( SP_HiveStore * store )
 {
 	spmemvfs_db_t * db = (spmemvfs_db_t*)store->getArgs();
 
@@ -356,7 +354,7 @@ int SP_DbmStoreManager :: close( SP_HiveStore * store )
 	return 0;
 }
 
-int SP_DbmStoreManager :: remove( SP_HiveReqObject * req )
+int SP_DbmStoreSource :: remove( SP_HiveReqObject * req )
 {
 	int ret = -1;
 

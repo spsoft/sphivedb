@@ -43,6 +43,7 @@ int SP_HiveConfig :: init( const char * configFile )
 			SP_NK_INI_ITEM_INT( "Database", "DBFileBegin", mDBFileBegin ),
 			SP_NK_INI_ITEM_INT( "Database", "DBFileEnd", mDBFileEnd ),
 			SP_NK_INI_ITEM_INT( "Database", "MaxOpenFiles", mMaxOpenFiles ),
+			SP_NK_INI_ITEM_INT( "Database", "MaxOpenDBs", mMaxOpenDBs ),
 
 			SP_NK_INI_ITEM_INT( "Option", "LockTimeoutSeconds", mLockTimeoutSeconds ),
 
@@ -110,6 +111,11 @@ int SP_HiveConfig :: getDBFileEnd()
 int SP_HiveConfig :: getMaxOpenFiles()
 {
 	return mMaxOpenFiles;
+}
+
+int SP_HiveConfig :: getMaxOpenDBs()
+{
+	return mMaxOpenDBs;
 }
 
 int SP_HiveConfig :: getLockTimeoutSeconds()

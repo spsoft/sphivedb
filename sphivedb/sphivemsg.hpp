@@ -29,8 +29,11 @@ public:
 
 	const char * getSql( int index );
 
+	const char * getUniqKey();
+
 private:
 	SP_JsonRpcReqObject * mInner;
+	char mUniqKey[ 128 ];
 };
 
 class SP_HiveRespObject {

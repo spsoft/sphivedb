@@ -21,16 +21,20 @@ public:
 	void setHandle( sqlite3 * handle );
 	sqlite3 * getHandle();
 
+	void setKey( const char * key );
+	const char * getKey();
+
 private:
 	void * mArgs;
 	sqlite3 * mHandle;
+	char * mKey;
 };
 
-class SP_HiveStoreManager {
+class SP_HiveStoreSource {
 public:
-	virtual ~SP_HiveStoreManager();
+	virtual ~SP_HiveStoreSource();
 
-	virtual int load( SP_HiveReqObject * req, SP_HiveStore * store ) = 0;
+	virtual SP_HiveStore * load( SP_HiveReqObject * req ) = 0;
 
 	virtual int save( SP_HiveReqObject * req, SP_HiveStore * store ) = 0;
 
@@ -38,6 +42,27 @@ public:
 
 	// @return -1 : Fail, 0 : OK, 1 : No record
 	virtual int remove( SP_HiveReqObject * req ) = 0;
+};
+
+class SP_HiveStoreCache;
+
+class SP_HiveStoreManager {
+public:
+	SP_HiveStoreManager( SP_HiveStoreSource * source, int maxCacheCount );
+	~SP_HiveStoreManager();
+
+	SP_HiveStore * load( SP_HiveReqObject * req );
+
+	int save( SP_HiveReqObject * req, SP_HiveStore * store );
+
+	int close( SP_HiveStore * store );
+
+	// @return -1 : Fail, 0 : OK, 1 : No record
+	int remove( SP_HiveReqObject * req );
+
+private:
+	SP_HiveStoreSource * mSource;
+	SP_HiveStoreCache * mCache;
 };
 
 #endif

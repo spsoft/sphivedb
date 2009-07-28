@@ -22,6 +22,7 @@ public:
 	int getDBFileBegin();
 	int getDBFileEnd();
 	int getMaxOpenFiles();
+	int getMaxOpenDBs();
 
 	int getLockTimeoutSeconds();
 
@@ -36,6 +37,7 @@ private:
 	int mDBFileBegin;
 	int mDBFileEnd;
 	int mMaxOpenFiles;
+	int mMaxOpenDBs;
 
 	int mLockTimeoutSeconds;
 
