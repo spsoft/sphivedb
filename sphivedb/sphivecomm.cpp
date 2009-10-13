@@ -11,7 +11,13 @@
 #include "spjson/spjsonhandle.hpp"
 #include "spjson/spjsondomparser.hpp"
 
-SP_HiveResultSet :: SP_HiveResultSet( const SP_JsonObjectNode * inner )
+SP_HiveResultSet :: ~SP_HiveResultSet()
+{
+}
+
+//====================================================================
+
+SP_HiveResultSetJson :: SP_HiveResultSetJson( const SP_JsonObjectNode * inner )
 {
 	mInner = inner;
 
@@ -24,16 +30,16 @@ SP_HiveResultSet :: SP_HiveResultSet( const SP_JsonObjectNode * inner )
 	mRowIndex = 0;
 }
 
-SP_HiveResultSet :: ~SP_HiveResultSet()
+SP_HiveResultSetJson :: ~SP_HiveResultSetJson()
 {
 }
 
-int SP_HiveResultSet :: getColumnCount()
+int SP_HiveResultSetJson :: getColumnCount()
 {
 	return NULL != mTypeList ? mTypeList->getCount() : 0 ;
 }
 
-const char * SP_HiveResultSet :: getType( int index )
+const char * SP_HiveResultSetJson :: getType( int index )
 {
 	SP_JsonHandle handle( mTypeList );
 
@@ -42,7 +48,7 @@ const char * SP_HiveResultSet :: getType( int index )
 	return NULL != node ? node->getValue() : NULL;
 }
 
-const char * SP_HiveResultSet :: getName( int index )
+const char * SP_HiveResultSetJson :: getName( int index )
 {
 	SP_JsonHandle handle( mNameList );
 
@@ -51,19 +57,19 @@ const char * SP_HiveResultSet :: getName( int index )
 	return NULL != node ? node->getValue() : NULL;
 }
 
-int SP_HiveResultSet :: getRowCount()
+int SP_HiveResultSetJson :: getRowCount()
 {
 	return NULL != mRowList ? mRowList->getCount() : 0;
 }
 
-int SP_HiveResultSet :: moveTo( int index )
+int SP_HiveResultSetJson :: moveTo( int index )
 {
 	mRowIndex = index;
 
 	return 0;
 }
 
-const char * SP_HiveResultSet :: getString( int index )
+const char * SP_HiveResultSetJson :: getString( int index )
 {
 	SP_JsonHandle handle( mRowList );
 
@@ -72,7 +78,7 @@ const char * SP_HiveResultSet :: getString( int index )
 	return NULL != node ? node->getValue() : NULL;
 }
 
-int SP_HiveResultSet :: getInt( int index )
+int SP_HiveResultSetJson :: getInt( int index )
 {
 	SP_JsonHandle handle( mRowList );
 
@@ -81,7 +87,7 @@ int SP_HiveResultSet :: getInt( int index )
 	return NULL != node ? node->getValue() : 0;
 }
 
-double SP_HiveResultSet :: getDouble( int index )
+double SP_HiveResultSetJson :: getDouble( int index )
 {
 	SP_JsonHandle handle( mRowList );
 
@@ -90,7 +96,7 @@ double SP_HiveResultSet :: getDouble( int index )
 	return NULL != node ? node->getValue() : 0;
 }
 
-const char * SP_HiveResultSet :: getAsString( int index, char * buffer, int len )
+const char * SP_HiveResultSetJson :: getAsString( int index, char * buffer, int len )
 {
 	SP_JsonHandle handle( mRowList );
 

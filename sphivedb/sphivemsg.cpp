@@ -13,17 +13,27 @@
 #include "spjson/spjsonrpc.hpp"
 #include "spjson/spjsonhandle.hpp"
 
-SP_HiveReqObject :: SP_HiveReqObject( SP_JsonRpcReqObject * inner )
+SP_HiveReqObject :: ~SP_HiveReqObject()
+{
+}
+
+SP_HiveRespObject :: ~SP_HiveRespObject()
+{
+}
+
+//====================================================================
+
+SP_HiveReqObjectJson :: SP_HiveReqObjectJson( SP_JsonRpcReqObject * inner )
 {
 	mInner = inner;
 	mUniqKey[0] = '\0';
 }
 
-SP_HiveReqObject :: ~SP_HiveReqObject()
+SP_HiveReqObjectJson :: ~SP_HiveReqObjectJson()
 {
 }
 
-const char * SP_HiveReqObject :: verify()
+const char * SP_HiveReqObjectJson :: verify()
 {
 	const char * ret = NULL;
 
@@ -40,7 +50,7 @@ const char * SP_HiveReqObject :: verify()
 	return ret;
 }
 
-const char * SP_HiveReqObject :: verifyWithoutSql()
+const char * SP_HiveReqObjectJson :: verifyWithoutSql()
 {
 	const char * ret = NULL;
 
@@ -55,7 +65,7 @@ const char * SP_HiveReqObject :: verifyWithoutSql()
 	return ret;
 }
 
-int SP_HiveReqObject :: getDBFile()
+int SP_HiveReqObjectJson :: getDBFile()
 {
 	SP_JsonHandle handle( mInner->getParams() );
 
@@ -64,7 +74,7 @@ int SP_HiveReqObject :: getDBFile()
 	return NULL != node ? node->getValue() : -1;
 }
 
-const char * SP_HiveReqObject :: getUser()
+const char * SP_HiveReqObjectJson :: getUser()
 {
 	SP_JsonHandle handle( mInner->getParams() );
 
@@ -73,7 +83,7 @@ const char * SP_HiveReqObject :: getUser()
 	return NULL != node ? node->getValue() : NULL;
 }
 
-const char * SP_HiveReqObject :: getDBName()
+const char * SP_HiveReqObjectJson :: getDBName()
 {
 	SP_JsonHandle handle( mInner->getParams() );
 
@@ -82,7 +92,7 @@ const char * SP_HiveReqObject :: getDBName()
 	return NULL != node ? node->getValue() : NULL;
 }
 
-int SP_HiveReqObject :: getSqlCount()
+int SP_HiveReqObjectJson :: getSqlCount()
 {
 	SP_JsonHandle handle( mInner->getParams() );
 
@@ -91,7 +101,7 @@ int SP_HiveReqObject :: getSqlCount()
 	return NULL != node ? node->getCount() : 0;
 }
 
-const char * SP_HiveReqObject :: getSql( int index )
+const char * SP_HiveReqObjectJson :: getSql( int index )
 {
 	SP_JsonHandle handle( mInner->getParams() );
 
@@ -100,7 +110,7 @@ const char * SP_HiveReqObject :: getSql( int index )
 	return NULL != node ? node->getValue() : NULL;
 }
 
-const char * SP_HiveReqObject :: getUniqKey()
+const char * SP_HiveReqObjectJson :: getUniqKey()
 {
 	if( '\0' == mUniqKey[0] ) {
 		snprintf( mUniqKey, sizeof( mUniqKey ), "%d/%s/%s", getDBFile(), getUser(), getDBName() );
@@ -111,18 +121,18 @@ const char * SP_HiveReqObject :: getUniqKey()
 
 //====================================================================
 
-SP_HiveRespObject :: SP_HiveRespObject( SP_JsonRpcRespObject * inner, int toBeOwner )
+SP_HiveRespObjectJson :: SP_HiveRespObjectJson( SP_JsonRpcRespObject * inner, int toBeOwner )
 {
 	mInner = inner;
 	mToBeOwner = toBeOwner;
 }
 
-SP_HiveRespObject :: ~SP_HiveRespObject()
+SP_HiveRespObjectJson :: ~SP_HiveRespObjectJson()
 {
 	if( mToBeOwner ) delete mInner, mInner = NULL;
 }
 
-int SP_HiveRespObject :: getErrorCode()
+int SP_HiveRespObjectJson :: getErrorCode()
 {
 	SP_JsonHandle handle( mInner->getError() );
 
@@ -131,7 +141,7 @@ int SP_HiveRespObject :: getErrorCode()
 	return NULL != node ? node->getValue() : 0;
 }
 
-const char * SP_HiveRespObject :: getErrorMsg()
+const char * SP_HiveRespObjectJson :: getErrorMsg()
 {
 	SP_JsonHandle handle( mInner->getError() );
 
@@ -140,7 +150,7 @@ const char * SP_HiveRespObject :: getErrorMsg()
 	return NULL != node ? node->getValue() : NULL;
 }
 
-int SP_HiveRespObject :: getErrdataCode()
+int SP_HiveRespObjectJson :: getErrdataCode()
 {
 	SP_JsonHandle handle( mInner->getError() );
 
@@ -149,7 +159,7 @@ int SP_HiveRespObject :: getErrdataCode()
 	return NULL != node ? node->getValue() : 0;
 }
 
-const char * SP_HiveRespObject :: getErrdataMsg()
+const char * SP_HiveRespObjectJson :: getErrdataMsg()
 {
 	SP_JsonHandle handle( mInner->getError() );
 
@@ -158,7 +168,7 @@ const char * SP_HiveRespObject :: getErrdataMsg()
 	return NULL != node ? node->getValue() : NULL;
 }
 
-int SP_HiveRespObject :: getResultCount()
+int SP_HiveRespObjectJson :: getResultCount()
 {
 	SP_JsonHandle handle( mInner->getResult() );
 
@@ -167,12 +177,12 @@ int SP_HiveRespObject :: getResultCount()
 	return NULL != node ? node->getCount() : 0;
 }
 
-SP_HiveResultSet * SP_HiveRespObject :: getResultSet( int index )
+SP_HiveResultSet * SP_HiveRespObjectJson :: getResultSet( int index )
 {
 	SP_JsonHandle handle( mInner->getResult() );
 
 	SP_JsonObjectNode * node = handle.getChild( index ).toObject();
 
-	return NULL != node ? ( new SP_HiveResultSet( node ) ) : NULL;
+	return NULL != node ? ( new SP_HiveResultSetJson( node ) ) : NULL;
 }
 

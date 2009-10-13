@@ -22,7 +22,7 @@ void testReq( const char * buffer, int len )
 		return;
 	}
 
-	SP_HiveReqObject req( &inner );
+	SP_HiveReqObjectJson req( &inner );
 
 	printf( "dbfile %d\n", req.getDBFile() );
 	printf( "user %s\n", req.getUser() );
@@ -68,7 +68,7 @@ void testResp( const char * buffer, int len )
 		return;
 	}
 
-	SP_HiveRespObject resp( &inner );
+	SP_HiveRespObjectJson resp( &inner );
 
 	printf( "result.count %d\n", resp.getResultCount() );
 
