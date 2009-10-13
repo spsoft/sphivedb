@@ -6,7 +6,6 @@
 #ifndef __sphivemanager_hpp__
 #define __sphivemanager_hpp__
 
-class SP_JsonRpcReqObject;
 class SP_JsonArrayNode;
 class SP_JsonObjectNode;
 
@@ -32,10 +31,10 @@ public:
 	int init( SP_HiveConfig * config, SP_NKTokenLockManager * lockManager,
 			SP_HiveStoreManager * storeManager );
 
-	int execute( SP_JsonRpcReqObject * rpcReq, SP_JsonArrayNode * result,
+	int execute( SP_HiveReqObject * reqObject, SP_JsonArrayNode * result,
 			SP_JsonObjectNode * errdata );
 
-	int remove( SP_JsonRpcReqObject * rpcReq, SP_JsonObjectNode * errdata );
+	int remove( SP_HiveReqObject * reqObject, SP_JsonObjectNode * errdata );
 
 private:
 

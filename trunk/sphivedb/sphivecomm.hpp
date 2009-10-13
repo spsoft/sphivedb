@@ -11,8 +11,30 @@ class SP_JsonArrayNode;
 
 class SP_HiveResultSet {
 public:
-	SP_HiveResultSet( const SP_JsonObjectNode * inner );
-	~SP_HiveResultSet();
+	virtual ~SP_HiveResultSet();
+
+	virtual int getColumnCount() = 0;
+
+	virtual const char * getType( int index ) = 0;
+	virtual const char * getName( int index ) = 0;
+
+	virtual int getRowCount() = 0;
+
+	virtual int moveTo( int index ) = 0;
+
+	virtual const char * getString( int index ) = 0;
+	virtual int getInt( int index ) = 0;
+	virtual double getDouble( int index ) = 0;
+
+	virtual const char * getAsString( int index, char * buffer, int len ) = 0;
+};
+
+//====================================================================
+
+class SP_HiveResultSetJson : public SP_HiveResultSet {
+public:
+	SP_HiveResultSetJson( const SP_JsonObjectNode * inner );
+	~SP_HiveResultSetJson();
 
 	int getColumnCount();
 

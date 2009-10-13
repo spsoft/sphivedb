@@ -32,10 +32,12 @@ void testExecute( SP_HiveManager * manager, const char * buffer, int len )
 		return;
 	}
 
+	SP_HiveReqObjectJson reqObject( &rpcReq );
+
 	SP_JsonArrayNode result;
 	SP_JsonObjectNode errdata;
 
-	manager->execute( &rpcReq, &result, &errdata );
+	manager->execute( &reqObject, &result, &errdata );
 
 	SP_JsonStringBuffer respBuffer;
 	SP_JsonRpcUtils::toRespBuffer( rpcReq.getID(), &result,

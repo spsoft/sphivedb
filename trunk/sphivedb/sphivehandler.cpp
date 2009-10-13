@@ -73,7 +73,7 @@ int SP_HiveHandler :: doExecute( SP_JsonRpcReqObject * rpcReq, SP_JsonNode ** re
 {
 	int ret = -1;
 
-	SP_HiveReqObject reqObject( rpcReq );
+	SP_HiveReqObjectJson reqObject( rpcReq );
 
 	const char * errmsg = reqObject.verify();
 
@@ -88,7 +88,7 @@ int SP_HiveHandler :: doExecute( SP_JsonRpcReqObject * rpcReq, SP_JsonNode ** re
 
 	if( NULL == errmsg ) {
 		*result = new SP_JsonArrayNode();
-		ret = mManager->execute( rpcReq, (SP_JsonArrayNode*)*result, errdata );
+		ret = mManager->execute( &reqObject, (SP_JsonArrayNode*)*result, errdata );
 		if( 0 != ret ) {
 			SP_JsonRpcUtils::setError( error,
 				SP_JsonRpcUtils::eInternalError, "Internal error." );
@@ -105,7 +105,7 @@ int SP_HiveHandler :: doRemove( SP_JsonRpcReqObject * rpcReq, SP_JsonNode ** res
 {
 	int ret = -1;
 
-	SP_HiveReqObject reqObject( rpcReq );
+	SP_HiveReqObjectJson reqObject( rpcReq );
 
 	const char * errmsg = reqObject.verifyWithoutSql();
 
@@ -119,7 +119,7 @@ int SP_HiveHandler :: doRemove( SP_JsonRpcReqObject * rpcReq, SP_JsonNode ** res
 	}
 
 	if( NULL == errmsg ) {
-		ret = mManager->remove( rpcReq, errdata );
+		ret = mManager->remove( &reqObject, errdata );
 		if( ret < 0 ) {
 			SP_JsonRpcUtils::setError( error,
 				SP_JsonRpcUtils::eInternalError, "Internal error." );

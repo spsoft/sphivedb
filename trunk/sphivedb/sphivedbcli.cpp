@@ -238,7 +238,7 @@ SP_HiveRespObject * SP_HiveDBProtocol :: execute( int dbfile, const char * user,
 	if( 0 == ret ) {
 		SP_JsonRpcRespObject * inner = new SP_JsonRpcRespObject(
 				(char*)httpResp.getContent(), httpResp.getContentLength() );
-		resp = new SP_HiveRespObject( inner, 1 );
+		resp = new SP_HiveRespObjectJson( inner, 1 );
 	} else {
 		SP_NKLog::log( LOG_WARNING, "clientCall %d", ret );
 	}

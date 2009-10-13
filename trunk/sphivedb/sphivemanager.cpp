@@ -95,26 +95,24 @@ int SP_HiveManager :: checkReq( SP_HiveReqObject * reqObject,
 	return 0;
 }
 
-int SP_HiveManager :: remove( SP_JsonRpcReqObject * rpcReq, SP_JsonObjectNode * errdata )
+int SP_HiveManager :: remove( SP_HiveReqObject * reqObject, SP_JsonObjectNode * errdata )
 {
 	int ret = 0;
 
-	SP_HiveReqObject reqObject( rpcReq );
+	if( 0 != checkReq( reqObject, errdata ) ) return -1;
 
-	if( 0 != checkReq( &reqObject, errdata ) ) return -1;
-
-	const char * user = reqObject.getUser();
+	const char * user = reqObject->getUser();
 
 	SP_NKTokenLockGuard lockGuard( mLockManager );
 
-	if( 0 != lockGuard.lock( reqObject.getUniqKey(), mConfig->getLockTimeoutSeconds() * 1000 ) ) {
+	if( 0 != lockGuard.lock( reqObject->getUniqKey(), mConfig->getLockTimeoutSeconds() * 1000 ) ) {
 		SP_JsonRpcUtils::setError( errdata, -1, "lock fail" );
 
 		SP_NKLog::log( LOG_ERR, "ERROR: Lock %s fail", user );
 		return -1;
 	}
 
-	ret = mStoreManager->remove( &reqObject );
+	ret = mStoreManager->remove( reqObject );
 
 	if( ret < 0 ) {
 		SP_JsonRpcUtils::setError( errdata, -1, "remove store fail" );
@@ -123,29 +121,27 @@ int SP_HiveManager :: remove( SP_JsonRpcReqObject * rpcReq, SP_JsonObjectNode * 
 	return ret;
 }
 
-int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq,
+int SP_HiveManager :: execute( SP_HiveReqObject * reqObject,
 		SP_JsonArrayNode * result, SP_JsonObjectNode * errdata )
 {
 	int ret = 0;
 
-	SP_HiveReqObject reqObject( rpcReq );
+	if( 0 != checkReq( reqObject, errdata ) ) return -1;
 
-	if( 0 != checkReq( &reqObject, errdata ) ) return -1;
-
-	int dbfile = reqObject.getDBFile();
-	const char * user = reqObject.getUser();
-	const char * dbname = reqObject.getDBName();
+	int dbfile = reqObject->getDBFile();
+	const char * user = reqObject->getUser();
+	const char * dbname = reqObject->getDBName();
 
 	SP_NKTokenLockGuard lockGuard( mLockManager );
 
-	if( 0 != lockGuard.lock( reqObject.getUniqKey(), mConfig->getLockTimeoutSeconds() * 1000 ) ) {
+	if( 0 != lockGuard.lock( reqObject->getUniqKey(), mConfig->getLockTimeoutSeconds() * 1000 ) ) {
 		SP_JsonRpcUtils::setError( errdata, -1, "lock fail" );
 
 		SP_NKLog::log( LOG_ERR, "ERROR: Lock %s fail", user );
 		return -1;
 	}
 
-	SP_HiveStore * store = mStoreManager->load( &reqObject );
+	SP_HiveStore * store = mStoreManager->load( reqObject );
 
 	if( NULL != store ) {
 		ret = mSchemaManager->ensureSchema( store->getHandle(), dbname );
@@ -163,8 +159,8 @@ int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq,
 
 		dbRet = SP_HiveSchemaManager::execWithLog( store->getHandle(), "BEGIN" );
 
-		for( int i = 0; i < reqObject.getSqlCount(); i++ ) {
-			const char * sql = reqObject.getSql( i );
+		for( int i = 0; i < reqObject->getSqlCount(); i++ ) {
+			const char * sql = reqObject->getSql( i );
 			for( ; isspace( *sql ); ) sql++;
 
 			if( 0 == strncasecmp( "select", sql, 6 ) ) {
@@ -188,13 +184,13 @@ int SP_HiveManager :: execute( SP_JsonRpcReqObject * rpcReq,
 	}
 
 	if( 0 == ret && hasUpdate ) {
-		ret = mStoreManager->save( &reqObject, store );
+		ret = mStoreManager->save( reqObject, store );
 	}
 
 	mStoreManager->close( store );
 
 	SP_NKLog::log( LOG_DEBUG, "DEBUG: execute( %d, %s, %s, {%d} ) = %d",
-			dbfile, user, dbname,  reqObject.getSqlCount(), ret );
+			dbfile, user, dbname,  reqObject->getSqlCount(), ret );
 
 	return ret;
 }
