@@ -13,15 +13,13 @@
 #include "sphiveconfig.hpp"
 #include "sphiveschema.hpp"
 #include "sphivestore.hpp"
+#include "sphivegather.hpp"
 
 #include "sqlite3.h"
 
 #include "spnetkit/spnklog.hpp"
 #include "spnetkit/spnkporting.hpp"
 #include "spnetkit/spnklock.hpp"
-
-#include "spjson/spjsonnode.hpp"
-#include "spjson/spjsonrpc.hpp"
 
 SP_HiveManager :: SP_HiveManager()
 {
@@ -68,13 +66,12 @@ int SP_HiveManager :: init( SP_HiveConfig * config, SP_NKTokenLockManager * lock
 	return ret;
 }
 
-int SP_HiveManager :: checkReq( SP_HiveReqObject * reqObject,
-		SP_JsonObjectNode * errdata )
+int SP_HiveManager :: checkReq( SP_HiveReqObject * reqObject, SP_HiveRespObjectGather * gather )
 {
 	int dbfile = reqObject->getDBFile();
 
 	if( dbfile < mConfig->getDBFileBegin() || dbfile > mConfig->getDBFileEnd() ) {
-		SP_JsonRpcUtils::setError( errdata, -1, "invalid dbfile" );
+		gather->reportError( -1, "invalid dbfile" );
 
 		SP_NKLog::log( LOG_ERR, "ERROR: invalid dbfile, %d no in [%d, %d]",
 				dbfile, mConfig->getDBFileBegin(), mConfig->getDBFileEnd() );
@@ -86,7 +83,7 @@ int SP_HiveManager :: checkReq( SP_HiveReqObject * reqObject,
 	const char * ddl = mConfig->getDDL( dbname );
 
 	if( NULL == ddl ) {
-		SP_JsonRpcUtils::setError( errdata, -1, "invalid dbname" );
+		gather->reportError( -1, "invalid dbname" );
 
 		SP_NKLog::log( LOG_ERR, "ERROR: invalid dbname %s, cannot find ddl", dbname );
 		return -1;
@@ -95,18 +92,18 @@ int SP_HiveManager :: checkReq( SP_HiveReqObject * reqObject,
 	return 0;
 }
 
-int SP_HiveManager :: remove( SP_HiveReqObject * reqObject, SP_JsonObjectNode * errdata )
+int SP_HiveManager :: remove( SP_HiveReqObject * reqObject, SP_HiveRespObjectGather * gather )
 {
 	int ret = 0;
 
-	if( 0 != checkReq( reqObject, errdata ) ) return -1;
+	if( 0 != checkReq( reqObject, gather ) ) return -1;
 
 	const char * user = reqObject->getUser();
 
 	SP_NKTokenLockGuard lockGuard( mLockManager );
 
 	if( 0 != lockGuard.lock( reqObject->getUniqKey(), mConfig->getLockTimeoutSeconds() * 1000 ) ) {
-		SP_JsonRpcUtils::setError( errdata, -1, "lock fail" );
+		gather->reportError( -1, "lock fail" );
 
 		SP_NKLog::log( LOG_ERR, "ERROR: Lock %s fail", user );
 		return -1;
@@ -115,18 +112,17 @@ int SP_HiveManager :: remove( SP_HiveReqObject * reqObject, SP_JsonObjectNode * 
 	ret = mStoreManager->remove( reqObject );
 
 	if( ret < 0 ) {
-		SP_JsonRpcUtils::setError( errdata, -1, "remove store fail" );
+		gather->reportError( -1, "remove store fail" );
 	}
 
 	return ret;
 }
 
-int SP_HiveManager :: execute( SP_HiveReqObject * reqObject,
-		SP_JsonArrayNode * result, SP_JsonObjectNode * errdata )
+int SP_HiveManager :: execute( SP_HiveReqObject * reqObject, SP_HiveRespObjectGather * gather )
 {
 	int ret = 0;
 
-	if( 0 != checkReq( reqObject, errdata ) ) return -1;
+	if( 0 != checkReq( reqObject, gather ) ) return -1;
 
 	int dbfile = reqObject->getDBFile();
 	const char * user = reqObject->getUser();
@@ -135,7 +131,7 @@ int SP_HiveManager :: execute( SP_HiveReqObject * reqObject,
 	SP_NKTokenLockGuard lockGuard( mLockManager );
 
 	if( 0 != lockGuard.lock( reqObject->getUniqKey(), mConfig->getLockTimeoutSeconds() * 1000 ) ) {
-		SP_JsonRpcUtils::setError( errdata, -1, "lock fail" );
+		gather->reportError( -1, "lock fail" );
 
 		SP_NKLog::log( LOG_ERR, "ERROR: Lock %s fail", user );
 		return -1;
@@ -145,10 +141,10 @@ int SP_HiveManager :: execute( SP_HiveReqObject * reqObject,
 
 	if( NULL != store ) {
 		ret = mSchemaManager->ensureSchema( store->getHandle(), dbname );
-		if( 0 != ret ) SP_JsonRpcUtils::setError( errdata, -1, "ensure schema fail" );
+		if( 0 != ret ) gather->reportError( -1, "ensure schema fail" );
 	} else {
 		ret = -1;
-		SP_JsonRpcUtils::setError( errdata, -1, "load store fail" );
+		gather->reportError( -1, "load store fail" );
 	}
 
 	int hasUpdate = 0;
@@ -164,9 +160,9 @@ int SP_HiveManager :: execute( SP_HiveReqObject * reqObject,
 			for( ; isspace( *sql ); ) sql++;
 
 			if( 0 == strncasecmp( "select", sql, 6 ) ) {
-				dbRet = doSelect( store->getHandle(), sql, result, errdata );
+				dbRet = doSelect( store->getHandle(), sql, gather );
 			} else {
-				dbRet = doUpdate( store->getHandle(), sql, result, errdata );
+				dbRet = doUpdate( store->getHandle(), sql, gather );
 				if( dbRet > 0 ) hasUpdate = 1;
 			}
 
@@ -195,8 +191,7 @@ int SP_HiveManager :: execute( SP_HiveReqObject * reqObject,
 	return ret;
 }
 
-int SP_HiveManager :: doSelect( sqlite3 * handle, const char * sql,
-		SP_JsonArrayNode * result, SP_JsonObjectNode * errdata )
+int SP_HiveManager :: doSelect( sqlite3 * handle, const char * sql, SP_HiveRespObjectGather * gather )
 {
 	const char * errmsg = NULL;
 
@@ -206,7 +201,7 @@ int SP_HiveManager :: doSelect( sqlite3 * handle, const char * sql,
 
 	if( SQLITE_OK != dbRet ) {
 		errmsg = sqlite3_errmsg( handle );
-		SP_JsonRpcUtils::setError( errdata, dbRet, errmsg );
+		gather->reportError( dbRet, errmsg );
 
 		SP_NKLog::log( LOG_ERR, "ERROR: sqlite3_prepare(%s) = %d, %s", sql, dbRet, errmsg );
 		if( NULL != stmt ) sqlite3_finalize( stmt );
@@ -215,18 +210,15 @@ int SP_HiveManager :: doSelect( sqlite3 * handle, const char * sql,
 
 	int count = sqlite3_column_count( stmt );
 
-	SP_JsonObjectNode * rs = new SP_JsonObjectNode();
+	gather->addResultSet();
 
-	SP_JsonPairNode * rowPair = new SP_JsonPairNode();
 	{
-		SP_JsonArrayNode * rowList = new SP_JsonArrayNode();
-
 		for( ; ; ) {
 			int stepRet = sqlite3_step( stmt );
 
 			if( SQLITE_DONE != stepRet && SQLITE_ROW != stepRet ) {
 				errmsg = sqlite3_errmsg( handle );
-				SP_JsonRpcUtils::setError( errdata, stepRet, errmsg );
+				gather->reportError( stepRet, errmsg );
 
 				SP_NKLog::log( LOG_ERR, "ERROR: sqlite3_step(%s) = %d, %s", sql, stepRet, errmsg );
 
@@ -236,80 +228,48 @@ int SP_HiveManager :: doSelect( sqlite3 * handle, const char * sql,
 
 			if( SQLITE_DONE == stepRet ) break;
 
-			SP_JsonArrayNode * row = new SP_JsonArrayNode();
+			gather->getResultSet()->addRow();
 
 			for( int i = 0; i < count; i++ ) {
 				const char * value = (char*)sqlite3_column_text( stmt, i );
 
-				if( NULL != value ) {
-					SP_JsonStringNode * column = new SP_JsonStringNode( value );
-					row->addValue( column );
-				} else {
-					SP_JsonNullNode * column = new SP_JsonNullNode();
-					row->addValue( column );
-				}
+				gather->getResultSet()->addColumn( value );
 			}
-			rowList->addValue( row );
 		}
-
-
-		rowPair->setName( "row" );
-		rowPair->setValue( rowList );
-
-		rs->addValue( rowPair );
 	}
 
 	if( 0 != dbRet) return dbRet;
 
-	SP_JsonPairNode * typePair = new SP_JsonPairNode();
 	{
-		SP_JsonArrayNode * type = new SP_JsonArrayNode();
-
 		for( int i = 0; i < count; i++ ) {
 			const char * value = sqlite3_column_decltype( stmt, i );
 			value = value ? value : "null";
 
-			type->addValue( new SP_JsonStringNode( value ) );
+			gather->getResultSet()->addType( value );
 		}
-
-		typePair->setName( "type" );
-		typePair->setValue( type );
-
-		rs->addValue( typePair );
 	}
 
-	SP_JsonPairNode * namePair = new SP_JsonPairNode();
 	{
-		SP_JsonArrayNode * name = new SP_JsonArrayNode();
-
 		for( int i = 0; i < count; i++ ) {
 			const char * value = sqlite3_column_name( stmt, i );
 
-			name->addValue( new SP_JsonStringNode( value ) );
+			gather->getResultSet()->addName( value );
 		}
-
-		namePair->setName( "name" );
-		namePair->setValue( name );
-
-		rs->addValue( namePair );
 	}
-
-	result->addValue( rs );
 
 	sqlite3_finalize( stmt );
 
 	return dbRet;
 }
 
-int SP_HiveManager :: doUpdate( sqlite3 * handle, const char * sql,
-		SP_JsonArrayNode * result, SP_JsonObjectNode * errdata )
+int SP_HiveManager :: doUpdate( sqlite3 * handle, const char * sql, SP_HiveRespObjectGather * gather )
 {
 	char * errmsg = NULL;
 
 	int dbRet = sqlite3_exec( handle, sql, NULL, NULL, &errmsg );
 
 	if( 0 != dbRet ) {
-		SP_JsonRpcUtils::setError( errdata, dbRet, errmsg );
+		gather->reportError( dbRet, errmsg );
 
 		SP_NKLog::log( LOG_ERR, "ERROR: sqlite3_exec(%s) = %d, %s",
 				sql, dbRet, errmsg ? errmsg : "NULL" );
@@ -320,52 +280,18 @@ int SP_HiveManager :: doUpdate( sqlite3 * handle, const char * sql,
 	int affected = sqlite3_changes( handle );
 	int last_insert_rowid = sqlite3_last_insert_rowid( handle );
 
-	SP_JsonPairNode * rowPair = new SP_JsonPairNode();
-	{
-		SP_JsonArrayNode * rowList = new SP_JsonArrayNode();
+	gather->addResultSet();
 
-		SP_JsonArrayNode * row = new SP_JsonArrayNode();
+	gather->getResultSet()->addRow();
 
-		SP_JsonIntNode * column = new SP_JsonIntNode( affected );
-		row->addValue( column );
+	gather->getResultSet()->addColumn( affected );
+	gather->getResultSet()->addColumn( last_insert_rowid );
 
-		column = new SP_JsonIntNode( last_insert_rowid );
-		row->addValue( column );
+	gather->getResultSet()->addType( "int" );
+	gather->getResultSet()->addType( "int" );
 
-		rowList->addValue( row );
-
-		rowPair->setName( "row" );
-		rowPair->setValue( rowList );
-	}
-
-	SP_JsonPairNode * typePair = new SP_JsonPairNode();
-	{
-		SP_JsonArrayNode * type = new SP_JsonArrayNode();
-
-		type->addValue( new SP_JsonStringNode( "int" ) );
-		type->addValue( new SP_JsonStringNode( "int" ) );
-
-		typePair->setName( "type" );
-		typePair->setValue( type );
-	}
-
-	SP_JsonPairNode * namePair = new SP_JsonPairNode();
-	{
-		SP_JsonArrayNode * name = new SP_JsonArrayNode();
-
-		name->addValue( new SP_JsonStringNode( "affected" ) );
-		name->addValue( new SP_JsonStringNode( "last_insert_rowid" ) );
-
-		namePair->setName( "name" );
-		namePair->setValue( name );
-	}
-
-	SP_JsonObjectNode * rs = new SP_JsonObjectNode();
-	rs->addValue( namePair );
-	rs->addValue( typePair );
-	rs->addValue( rowPair );
-
-	result->addValue( rs );
+	gather->getResultSet()->addName( "affected" );
+	gather->getResultSet()->addName( "last_insert_rowid" );
 
 	return affected;
 }
