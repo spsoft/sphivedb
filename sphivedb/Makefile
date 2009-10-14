@@ -33,11 +33,11 @@ LIBOBJS = sphivecomm.o sphivemsg.o sphivedbcli.o
 
 HIVEDBSVR_OBJS = spmemvfs.o spcabinet.o sphivehandler.o sphivemanager.o \
 		sphiveconfig.o sphivedbsvr.o sphiveschema.o \
-		sphivestore.o spdbmstore.o
+		sphivestore.o spdbmstore.o sphivegather.o
 
 SQLITESVR_OBJS = sphivehandler.o sphivemanager.o \
 		sphiveconfig.o sphiveschema.o \
-		sphivestore.o spfilestore.o spsqlitesvr.o
+		sphivestore.o spfilestore.o spsqlitesvr.o sphivegather.o
 
 TARGET = libsphivedbcli.so libsphivedbcli.a \
 		sphivedbsvr spsqlitesvr sqlite
@@ -72,7 +72,7 @@ testmsg: sphivecomm.o sphivemsg.o testmsg.o spsqlite.o
 
 testmanager: testmanager.o sphivemanager.o sphivemsg.o \
 		sphiveconfig.o sphivecomm.o spcabinet.o spmemvfs.o spsqlite.o \
-		sphiveschema.o sphivestore.o spdbmstore.o
+		sphiveschema.o sphivestore.o spdbmstore.o sphivegather.o
 	$(LINKER) -o $@ $^ $(HIVEDBSVR_LIB)
 
 testcli: testcli.o

@@ -6,15 +6,14 @@
 #ifndef __sphivemanager_hpp__
 #define __sphivemanager_hpp__
 
-class SP_JsonArrayNode;
-class SP_JsonObjectNode;
-
 class SP_NKTokenLockManager;
 
 class SP_HiveConfig;
 class SP_HiveSchemaManager;
 
 class SP_HiveReqObject;
+class SP_HiveRespObjectGather;
+
 class SP_HiveFileCache;
 
 class SP_HiveStoreManager;
@@ -31,19 +30,16 @@ public:
 	int init( SP_HiveConfig * config, SP_NKTokenLockManager * lockManager,
 			SP_HiveStoreManager * storeManager );
 
-	int execute( SP_HiveReqObject * reqObject, SP_JsonArrayNode * result,
-			SP_JsonObjectNode * errdata );
+	int execute( SP_HiveReqObject * reqObject, SP_HiveRespObjectGather * gather );
 
-	int remove( SP_HiveReqObject * reqObject, SP_JsonObjectNode * errdata );
+	int remove( SP_HiveReqObject * reqObject, SP_HiveRespObjectGather * gather );
 
 private:
 
-	int checkReq( SP_HiveReqObject * reqObject, SP_JsonObjectNode * errdata );
+	int checkReq( SP_HiveReqObject * reqObject, SP_HiveRespObjectGather * gather );
 
-	static int doSelect( sqlite3 * handle, const char * sql,
-			SP_JsonArrayNode * result, SP_JsonObjectNode * errdata );
-	static int doUpdate( sqlite3 * handle, const char * sql,
-			SP_JsonArrayNode * result, SP_JsonObjectNode * errdata );
+	static int doSelect( sqlite3 * handle, const char * sql, SP_HiveRespObjectGather * gather );
+	static int doUpdate( sqlite3 * handle, const char * sql, SP_HiveRespObjectGather * gather );
 
 private:
 	SP_NKTokenLockManager * mLockManager;

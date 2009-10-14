@@ -10,10 +10,8 @@
 
 class SP_HiveManager;
 
-class SP_JsonRpcReqObject;
-class SP_JsonArrayNode;
-class SP_JsonObjectNode;
-class SP_JsonNode;
+class SP_HiveReqObject;
+class SP_HiveRespObjectGather;
 
 class SP_HiveHandler : public SP_HttpHandler {
 public:
@@ -23,11 +21,9 @@ public:
 	virtual void handle( SP_HttpRequest * request, SP_HttpResponse * response );
 
 private:
-	int doExecute( SP_JsonRpcReqObject * rpcReq, SP_JsonNode ** result,
-			SP_JsonObjectNode * error );
+	int doExecute( SP_HiveReqObject * reqObject, SP_HiveRespObjectGather * respObject );
 
-	int doRemove( SP_JsonRpcReqObject * rpcReq, SP_JsonNode ** result,
-			SP_JsonObjectNode * error );
+	int doRemove( SP_HiveReqObject * reqObject, SP_HiveRespObjectGather * respObject );
 
 private:
 	SP_HiveManager * mManager;
