@@ -9,7 +9,7 @@
 #include <string.h>
 
 #include "sphivemsg.hpp"
-#include "sphivecomm.hpp"
+#include "sphivejson.hpp"
 
 #include "spjson/spjsonrpc.hpp"
 

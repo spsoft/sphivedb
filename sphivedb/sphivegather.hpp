@@ -9,6 +9,8 @@
 class SP_JsonObjectNode;
 class SP_JsonArrayNode;
 
+class SP_ProtoBufEncoder;
+
 class SP_HiveResultSetGather {
 public:
 	virtual ~SP_HiveResultSetGather();
@@ -17,29 +19,31 @@ public:
 
 	virtual int addName( const char * name ) = 0;
 
-	virtual int addRow() = 0;
-
 	virtual int addColumn( const char * value ) = 0;
 
 	virtual int addColumn( int value ) = 0;
+
+	virtual int submitRow() = 0;
 };
 
 class SP_HiveRespObjectGather {
 public:
 	virtual ~SP_HiveRespObjectGather();
 
-	virtual int addResultSet() = 0;
-
 	virtual SP_HiveResultSetGather * getResultSet() = 0;
 
+	virtual int submitResultSet() = 0;
+
 	virtual int reportError( int errcode, const char * errmsg ) = 0;
+
+	virtual int reportErrdata( int errcode, const char * errmsg ) = 0;
 };
 
 //====================================================================
 
 class SP_HiveResultSetGatherJson : public SP_HiveResultSetGather {
 public:
-	SP_HiveResultSetGatherJson( SP_JsonObjectNode * inner );
+	SP_HiveResultSetGatherJson();
 
 	virtual ~SP_HiveResultSetGatherJson();
 
@@ -47,15 +51,18 @@ public:
 
 	virtual int addName( const char * name );
 
-	virtual int addRow();
-
 	virtual int addColumn( const char * value );
 
 	virtual int addColumn( int value );
 
-private:
-	SP_JsonObjectNode * mInner;
+	virtual int submitRow();
 
+	virtual int submit( SP_JsonObjectNode * result );
+
+private:
+	void initInner();
+
+private:
 	SP_JsonArrayNode * mTypeList;
 	SP_JsonArrayNode * mNameList;
 
@@ -69,21 +76,77 @@ public:
 	SP_HiveRespObjectGatherJson();
 	virtual ~SP_HiveRespObjectGatherJson();
 
-	virtual int addResultSet();
-
 	virtual SP_HiveResultSetGather * getResultSet();
+
+	virtual int submitResultSet();
 
 	virtual int reportError( int errcode, const char * errmsg );
 
+	virtual int reportErrdata( int errcode, const char * errmsg );
+
 	SP_JsonArrayNode * getResult();
 
-	SP_JsonObjectNode * getErrdata();
+	SP_JsonObjectNode * getError();
 
 private:
 	SP_JsonArrayNode * mResult;
+	SP_JsonObjectNode * mError;
 	SP_JsonObjectNode * mErrdata;
 
-	SP_HiveResultSetGather * mResultSet;
+	SP_HiveResultSetGatherJson * mResultSet;
+};
+
+//====================================================================
+
+class SP_HiveResultSetGatherProtoBuf : public SP_HiveResultSetGather {
+public:
+	SP_HiveResultSetGatherProtoBuf();
+
+	virtual ~SP_HiveResultSetGatherProtoBuf();
+
+	virtual int addType( const char * type );
+
+	virtual int addName( const char * name );
+
+	virtual int addColumn( const char * value );
+
+	virtual int addColumn( int value );
+
+	virtual int submitRow();
+
+	virtual int submit( SP_ProtoBufEncoder * result );
+
+private:
+	SP_ProtoBufEncoder * mTypeList;
+	SP_ProtoBufEncoder * mNameList;
+
+	SP_ProtoBufEncoder * mRowList;
+
+	SP_ProtoBufEncoder * mRow;
+};
+
+class SP_HiveRespObjectGatherProtoBuf : public SP_HiveRespObjectGather {
+public:
+	SP_HiveRespObjectGatherProtoBuf();
+	virtual ~SP_HiveRespObjectGatherProtoBuf();
+
+	virtual SP_HiveResultSetGather * getResultSet();
+
+	virtual int submitResultSet();
+
+	virtual int reportError( int errcode, const char * errmsg );
+
+	virtual int reportErrdata( int errcode, const char * errmsg );
+
+	SP_ProtoBufEncoder * getResult();
+
+	SP_ProtoBufEncoder * getError();
+
+private:
+	SP_ProtoBufEncoder * mResult;
+	SP_ProtoBufEncoder * mError;
+
+	SP_HiveResultSetGatherProtoBuf * mResultSet;
 };
 
 #endif

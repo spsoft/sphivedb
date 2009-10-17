@@ -71,7 +71,7 @@ int SP_HiveManager :: checkReq( SP_HiveReqObject * reqObject, SP_HiveRespObjectG
 	int dbfile = reqObject->getDBFile();
 
 	if( dbfile < mConfig->getDBFileBegin() || dbfile > mConfig->getDBFileEnd() ) {
-		gather->reportError( -1, "invalid dbfile" );
+		gather->reportErrdata( -1, "invalid dbfile" );
 
 		SP_NKLog::log( LOG_ERR, "ERROR: invalid dbfile, %d no in [%d, %d]",
 				dbfile, mConfig->getDBFileBegin(), mConfig->getDBFileEnd() );
@@ -83,7 +83,7 @@ int SP_HiveManager :: checkReq( SP_HiveReqObject * reqObject, SP_HiveRespObjectG
 	const char * ddl = mConfig->getDDL( dbname );
 
 	if( NULL == ddl ) {
-		gather->reportError( -1, "invalid dbname" );
+		gather->reportErrdata( -1, "invalid dbname" );
 
 		SP_NKLog::log( LOG_ERR, "ERROR: invalid dbname %s, cannot find ddl", dbname );
 		return -1;
@@ -103,7 +103,7 @@ int SP_HiveManager :: remove( SP_HiveReqObject * reqObject, SP_HiveRespObjectGat
 	SP_NKTokenLockGuard lockGuard( mLockManager );
 
 	if( 0 != lockGuard.lock( reqObject->getUniqKey(), mConfig->getLockTimeoutSeconds() * 1000 ) ) {
-		gather->reportError( -1, "lock fail" );
+		gather->reportErrdata( -1, "lock fail" );
 
 		SP_NKLog::log( LOG_ERR, "ERROR: Lock %s fail", user );
 		return -1;
@@ -112,7 +112,7 @@ int SP_HiveManager :: remove( SP_HiveReqObject * reqObject, SP_HiveRespObjectGat
 	ret = mStoreManager->remove( reqObject );
 
 	if( ret < 0 ) {
-		gather->reportError( -1, "remove store fail" );
+		gather->reportErrdata( -1, "remove store fail" );
 	}
 
 	return ret;
@@ -131,7 +131,7 @@ int SP_HiveManager :: execute( SP_HiveReqObject * reqObject, SP_HiveRespObjectGa
 	SP_NKTokenLockGuard lockGuard( mLockManager );
 
 	if( 0 != lockGuard.lock( reqObject->getUniqKey(), mConfig->getLockTimeoutSeconds() * 1000 ) ) {
-		gather->reportError( -1, "lock fail" );
+		gather->reportErrdata( -1, "lock fail" );
 
 		SP_NKLog::log( LOG_ERR, "ERROR: Lock %s fail", user );
 		return -1;
@@ -141,10 +141,10 @@ int SP_HiveManager :: execute( SP_HiveReqObject * reqObject, SP_HiveRespObjectGa
 
 	if( NULL != store ) {
 		ret = mSchemaManager->ensureSchema( store->getHandle(), dbname );
-		if( 0 != ret ) gather->reportError( -1, "ensure schema fail" );
+		if( 0 != ret ) gather->reportErrdata( -1, "ensure schema fail" );
 	} else {
 		ret = -1;
-		gather->reportError( -1, "load store fail" );
+		gather->reportErrdata( -1, "load store fail" );
 	}
 
 	int hasUpdate = 0;
@@ -201,7 +201,7 @@ int SP_HiveManager :: doSelect( sqlite3 * handle, const char * sql, SP_HiveRespO
 
 	if( SQLITE_OK != dbRet ) {
 		errmsg = sqlite3_errmsg( handle );
-		gather->reportError( dbRet, errmsg );
+		gather->reportErrdata( dbRet, errmsg );
 
 		SP_NKLog::log( LOG_ERR, "ERROR: sqlite3_prepare(%s) = %d, %s", sql, dbRet, errmsg );
 		if( NULL != stmt ) sqlite3_finalize( stmt );
@@ -210,15 +210,13 @@ int SP_HiveManager :: doSelect( sqlite3 * handle, const char * sql, SP_HiveRespO
 
 	int count = sqlite3_column_count( stmt );
 
-	gather->addResultSet();
-
 	{
 		for( ; ; ) {
 			int stepRet = sqlite3_step( stmt );
 
 			if( SQLITE_DONE != stepRet && SQLITE_ROW != stepRet ) {
 				errmsg = sqlite3_errmsg( handle );
-				gather->reportError( stepRet, errmsg );
+				gather->reportErrdata( stepRet, errmsg );
 
 				SP_NKLog::log( LOG_ERR, "ERROR: sqlite3_step(%s) = %d, %s", sql, stepRet, errmsg );
 
@@ -228,13 +226,13 @@ int SP_HiveManager :: doSelect( sqlite3 * handle, const char * sql, SP_HiveRespO
 
 			if( SQLITE_DONE == stepRet ) break;
 
-			gather->getResultSet()->addRow();
-
 			for( int i = 0; i < count; i++ ) {
 				const char * value = (char*)sqlite3_column_text( stmt, i );
 
 				gather->getResultSet()->addColumn( value );
 			}
+
+			gather->getResultSet()->submitRow();
 		}
 	}
 
@@ -257,6 +255,8 @@ int SP_HiveManager :: doSelect( sqlite3 * handle, const char * sql, SP_HiveRespO
 		}
 	}
 
+	gather->submitResultSet();
+
 	sqlite3_finalize( stmt );
 
 	return dbRet;
@@ -269,7 +269,7 @@ int SP_HiveManager :: doUpdate( sqlite3 * handle, const char * sql, SP_HiveRespO
 	int dbRet = sqlite3_exec( handle, sql, NULL, NULL, &errmsg );
 
 	if( 0 != dbRet ) {
-		gather->reportError( dbRet, errmsg );
+		gather->reportErrdata( dbRet, errmsg );
 
 		SP_NKLog::log( LOG_ERR, "ERROR: sqlite3_exec(%s) = %d, %s",
 				sql, dbRet, errmsg ? errmsg : "NULL" );
@@ -280,18 +280,19 @@ int SP_HiveManager :: doUpdate( sqlite3 * handle, const char * sql, SP_HiveRespO
 	int affected = sqlite3_changes( handle );
 	int last_insert_rowid = sqlite3_last_insert_rowid( handle );
 
-	gather->addResultSet();
+	{
+		gather->getResultSet()->addType( "int" );
+		gather->getResultSet()->addType( "int" );
 
-	gather->getResultSet()->addRow();
+		gather->getResultSet()->addName( "affected" );
+		gather->getResultSet()->addName( "last_insert_rowid" );
 
-	gather->getResultSet()->addColumn( affected );
-	gather->getResultSet()->addColumn( last_insert_rowid );
+		gather->getResultSet()->addColumn( affected );
+		gather->getResultSet()->addColumn( last_insert_rowid );
+		gather->getResultSet()->submitRow();
+	}
 
-	gather->getResultSet()->addType( "int" );
-	gather->getResultSet()->addType( "int" );
-
-	gather->getResultSet()->addName( "affected" );
-	gather->getResultSet()->addName( "last_insert_rowid" );
+	gather->submitResultSet();
 
 	return affected;
 }

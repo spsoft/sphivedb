@@ -3,11 +3,9 @@
  * For license terms, see the file COPYING along with this library.
  */
 
-#ifndef __sphivejson_hpp__
-#define __sphivejson_hpp__
+#ifndef __sphivemsg_hpp__
+#define __sphivemsg_hpp__
 
-class SP_JsonRpcReqObject;
-class SP_JsonRpcRespObject;
 class SP_HiveResultSet;
 
 class SP_HiveReqObject {
@@ -47,53 +45,24 @@ public:
 	virtual SP_HiveResultSet * getResultSet( int index ) = 0;
 };
 
-//====================================================================
-
-class SP_HiveReqObjectJson : public SP_HiveReqObject {
+class SP_HiveResultSet {
 public:
-	SP_HiveReqObjectJson( SP_JsonRpcReqObject * inner );
-	~SP_HiveReqObjectJson();
+	virtual ~SP_HiveResultSet();
 
-	const char * verify();
+	virtual int getColumnCount() = 0;
 
-	const char * verifyWithoutSql();
+	virtual const char * getType( int index ) = 0;
+	virtual const char * getName( int index ) = 0;
 
-	int getDBFile();
+	virtual int getRowCount() = 0;
 
-	const char * getUser();
+	virtual int moveTo( int index ) = 0;
 
-	const char * getDBName();
+	virtual const char * getString( int index ) = 0;
+	virtual int getInt( int index ) = 0;
+	virtual double getDouble( int index ) = 0;
 
-	int getSqlCount();
-
-	const char * getSql( int index );
-
-	const char * getUniqKey();
-
-private:
-	SP_JsonRpcReqObject * mInner;
-	char mUniqKey[ 128 ];
-};
-
-class SP_HiveRespObjectJson : public SP_HiveRespObject {
-public:
-	SP_HiveRespObjectJson( SP_JsonRpcRespObject * inner, int toBeOwner = 0 );
-	~SP_HiveRespObjectJson();
-
-	int getErrorCode();
-	const char * getErrorMsg();
-
-	int getErrdataCode();
-	const char * getErrdataMsg();
-
-	int getResultCount();
-
-	/* caller must delete the return value */
-	SP_HiveResultSet * getResultSet( int index );
-
-private:
-	SP_JsonRpcRespObject * mInner;
-	int mToBeOwner;
+	virtual const char * getAsString( int index, char * buffer, int len ) = 0;
 };
 
 #endif

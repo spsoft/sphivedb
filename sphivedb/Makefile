@@ -29,7 +29,7 @@ SQLITESVR_LIB = $(COMMON_LIB)
 
 #--------------------------------------------------------------------
 
-LIBOBJS = sphivecomm.o sphivemsg.o sphivedbcli.o
+LIBOBJS = sphivemsg.o sphivejson.o sphivepb.o sphivedbcli.o
 
 HIVEDBSVR_OBJS = spmemvfs.o spcabinet.o sphivehandler.o sphivemanager.o \
 		sphiveconfig.o sphivedbsvr.o sphiveschema.o \
@@ -67,11 +67,11 @@ sqlite: sqlite3shell.o spsqlite.o
 testmemvfs: spmemvfs.o testmemvfs.o spsqlite.o
 	$(LINKER) -o $@ $^ -lpthread -lrt -ldl
 
-testmsg: sphivecomm.o sphivemsg.o testmsg.o spsqlite.o
+testmsg: sphivemsg.o sphivejson.o testmsg.o spsqlite.o
 	$(LINKER) -o $@ $^ $(COMMON_LIB)
 
 testmanager: testmanager.o sphivemanager.o sphivemsg.o \
-		sphiveconfig.o sphivecomm.o spcabinet.o spmemvfs.o spsqlite.o \
+		sphiveconfig.o sphivejson.o spcabinet.o spmemvfs.o spsqlite.o \
 		sphiveschema.o sphivestore.o spdbmstore.o sphivegather.o
 	$(LINKER) -o $@ $^ $(HIVEDBSVR_LIB)
 
