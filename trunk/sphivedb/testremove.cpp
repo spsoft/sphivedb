@@ -18,7 +18,7 @@
 
 #include "sphivedbcli.hpp"
 #include "sphivemsg.hpp"
-#include "sphivecomm.hpp"
+#include "sphivejson.hpp"
 
 void showUsage( const char * program )
 {
@@ -67,11 +67,12 @@ int main( int argc, char * argv[] )
 
 	SP_NKTcpSocket socket( host, atoi( port ) );
 
-	SP_HiveDBProtocol protocol( &socket, 0 );
+	SP_HiveDBProtocol protocol( &socket, 0, SP_HiveDBClientConfig::eProtoBufRpc );
 
-	int ret = protocol.remove( atoi( dbfile ), user, dbname );
+	int result = -1;
+	int ret = protocol.remove( atoi( dbfile ), user, dbname, &result );
 
-	printf( "remove %d\n", ret );
+	printf( "remove ret %d, result %d\n", ret, result );
 
 	return 0;
 }

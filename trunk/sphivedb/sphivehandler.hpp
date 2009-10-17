@@ -21,6 +21,11 @@ public:
 	virtual void handle( SP_HttpRequest * request, SP_HttpResponse * response );
 
 private:
+
+	void handleJson( SP_HttpRequest * request, SP_HttpResponse * response );
+
+	void handleProtoBuf( SP_HttpRequest * request, SP_HttpResponse * response );
+
 	int doExecute( SP_HiveReqObject * reqObject, SP_HiveRespObjectGather * respObject );
 
 	int doRemove( SP_HiveReqObject * reqObject, SP_HiveRespObjectGather * respObject );

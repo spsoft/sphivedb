@@ -10,6 +10,7 @@
 
 #include "sphivemanager.hpp"
 #include "sphivemsg.hpp"
+#include "sphivejson.hpp"
 #include "sphiveconfig.hpp"
 #include "spdbmstore.hpp"
 #include "sphivegather.hpp"

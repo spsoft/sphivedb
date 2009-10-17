@@ -12,15 +12,11 @@
 #include <string.h>
 #include <signal.h>
 
-#include "sphivedbcli.hpp"
-#include "sphivejson.hpp"
-#include "sphivemsg.hpp"
+#include <mysql.h>
 
-#include "spnetkit/spnklist.hpp"
-#include "spnetkit/spnktime.hpp"
-#include "spnetkit/spnklog.hpp"
-#include "spnetkit/spnksocket.hpp"
 #include "spnetkit/spnkini.hpp"
+#include "spnetkit/spnktime.hpp"
+#include "spnetkit/spnklist.hpp"
 
 static int gClients = 8;
 static int gReadTimes = 100;
@@ -37,8 +33,7 @@ static pthread_mutex_t gBeginMutex = PTHREAD_MUTEX_INITIALIZER;
 void showUsage( const char * program )
 {
 	printf( "\n" );
-	printf( "Usage: %s [-f <config file>] [-t <type>]\n", program );
-	printf( "\t[-c <clients>] [-r <read times>] [-w <write times>] [-o] [-v]\n\n" );
+	printf( "Usage: %s [-f <config file>] [-c <clients>] [-r <read times>] [-w <write times>] [-o] [-v]\n", program );
 	printf( "\t-f specify sphivedbcli.ini\n" );
 	printf( "\t-c how many clients\n" );
 	printf( "\t-r how many read actions per client\n" );
@@ -52,14 +47,18 @@ void showUsage( const char * program )
 
 void * threadFunc( void * args )
 {
+	MYSQL mysql;
+	mysql_init( &mysql );
+
+	if( NULL == mysql_real_connect( &mysql, "localhost", "root", "root",
+			"addrbook", 3306, NULL, 0 ) ) {
+		printf( "mysql_real_connect fail\n" );
+		return NULL;
+	}
+
 	// waiting for start mutex
 	pthread_mutex_lock( &gBeginMutex );
 	pthread_mutex_unlock( &gBeginMutex );
-
-	SP_HiveDBClient * client = (SP_HiveDBClient*)args;
-
-	SP_NKStringList readSql, writeSql;
-	readSql.append( "select * from addrbook limit 100;" );
 
 	int loops = gReadTimes + gWriteTimes;
 
@@ -77,30 +76,35 @@ void * threadFunc( void * args )
 		char user[ 32 ] = { 0 };
 		snprintf( user, sizeof( user ), "%d", uid );
 
-		SP_NKStringList * actionSql = &readSql;
+		char sql[ 1024 ] = { 0 };
 
 		if( isWrite ) {
-			char sql[ 256 ] = { 0 };
-			snprintf( sql, sizeof( sql ), "insert into addrbook ( gid, addr, freq ) "
-					"values ( 0, '%d.%d.%d', 0 );", i, tid, (int)time( NULL ) );
-
-			writeSql.clean();
-			writeSql.append( sql );
-
-			actionSql = &writeSql;
-
+			//snprintf( sql, sizeof( sql ), "insert into addrbook_%d ( user, gid, addr, freq ) "
+					//"values ( '%d', 0, '%d.%d.%d', 0 );", uid / 100, uid, i, tid, (int)time( NULL ) );
+			snprintf( sql, sizeof( sql ), "insert into addrbook ( user, gid, addr, freq ) "
+					"values ( '%d', 0, '%d.%d.%d', 0 );", uid, i, tid, (int)time( NULL ) );
 			writeTimes++;
+		} else {
+			//snprintf( sql, sizeof( sql ), "select * from addrbook_%d where user = '%d' limit 100;",
+					//uid / 100, uid );
+			snprintf( sql, sizeof( sql ), "select * from addrbook where user = '%d' limit 100;", uid );
 		}
 
-		SP_HiveRespObject * resp = client->execute( uid / 100, user, "addrbook", actionSql );
-		if( NULL != resp ) {
-			if( 0 != resp->getErrorCode() ) {
-				failTimes++;
-				printf( "execute fail, errcode %d, %s\n",
-						resp->getErrdataCode(), resp->getErrdataMsg() );
+		int ret = mysql_query( &mysql, sql );
+
+		if( 0 == ret ) {
+			if( isWrite ) {
+				// noop
+			} else {
+				MYSQL_RES * res = mysql_store_result( &mysql );
+				if( NULL != res ) {
+					mysql_free_result( res );
+				} else {
+					failTimes++;
+				}
 			}
-			delete resp;
 		} else {
+			printf( "execute fail, errcode %d, %s\n", ret, mysql_error( &mysql ) );
 			failTimes++;
 		}
 	}
@@ -128,15 +132,10 @@ int main( int argc, char * argv[] )
 	extern char *optarg ;
 	int c ;
 
-	const char * type = NULL;
-
-	while( ( c = getopt ( argc, argv, "f:t:c:r:w:ov" ) ) != EOF ) {
+	while( ( c = getopt ( argc, argv, "f:c:r:w:ov" ) ) != EOF ) {
 		switch ( c ) {
 			case 'f':
 				gConfigFile = optarg;
-				break;
-			case 't':
-				type = optarg;
 				break;
 			case 'c':
 				gClients = atoi( optarg );
@@ -148,25 +147,12 @@ int main( int argc, char * argv[] )
 				gWriteTimes = atoi( optarg );
 				break;
 			case 'o':
-				SP_NKLog::setLogLevel( LOG_DEBUG );
-				SP_NKLog::init4test( "teststress" );
-				//SP_NKSocket::setLogSocketDefault( 1 );
 				break;
 			case '?' :
 			case 'v' :
 				showUsage( argv[0] );
 		}
 	}
-
-	int rpcType = SP_HiveDBClientConfig::eJsonRpc;
-
-	if( NULL != type && 0 == strcasecmp( type, "protobuf" ) ) {
-		rpcType = SP_HiveDBClientConfig::eProtoBufRpc;
-	}
-
-	SP_HiveDBClient client;
-
-	assert( 0 == client.init( gConfigFile, rpcType ) );
 
 	SP_NKIniFile iniFile;
 	iniFile.open( gConfigFile );
@@ -182,7 +168,7 @@ int main( int argc, char * argv[] )
 	printf( "begin to create thread ...\n" );
 
 	for( int i = 0; i < gClients; i++ ) {
-		if( 0 != pthread_create( &(thrlist[i]), NULL, threadFunc, &client ) ) {
+		if( 0 != pthread_create( &(thrlist[i]), NULL, threadFunc, NULL ) ) {
 			printf( "pthread_create fail, index %d, errno %d, %s\n", i, errno, strerror( errno ) );
 			exit( -1 );
 		}
@@ -202,7 +188,7 @@ int main( int argc, char * argv[] )
 
 	printf( "\n" );
 
-	int usedTime = clock.getAge();
+	int usedTime = clock.getAge() > 0 ? clock.getAge() : 1;
 
 	float writePerSeconds = ( gTotalWriteTimes * 1000.0 ) / usedTime;
 	float readPerSeconds = ( gTotalReadTimes * 1000.0 ) / usedTime;

@@ -10,6 +10,8 @@
 
 #include "sphivedbcli.hpp"
 #include "sphivemsg.hpp"
+#include "sphivejson.hpp"
+#include "sphivepb.hpp"
 
 #include "spnetkit/spnkhttpcli.hpp"
 #include "spnetkit/spnkhttpmsg.hpp"
@@ -25,6 +27,8 @@
 #include "spjson/spjsonnode.hpp"
 #include "spjson/spjsonutils.hpp"
 #include "spjson/spjsonhandle.hpp"
+#include "spjson/sppbcodec.hpp"
+#include "spjson/sppbrpc.hpp"
 
 typedef struct tagSP_HiveDBClientConfigImpl {
 	SP_NKEndPointTableConfig * mEndPointTableConfig;
@@ -76,6 +80,7 @@ SP_NKSocketPoolConfig * SP_HiveDBClientConfig :: getSocketPoolConfig()
 typedef struct tagSP_HiveDBClientImpl {
 	SP_HiveDBClientConfig * mConfig;
 	SP_NKSocketPool * mSocketPool;
+	int mRpcType;
 } SP_HiveDBClientImpl_t;
 
 SP_HiveDBClient :: SP_HiveDBClient()
@@ -91,9 +96,10 @@ SP_HiveDBClient :: ~SP_HiveDBClient()
 	free( mImpl ), mImpl = NULL;
 }
 
-int SP_HiveDBClient :: init( const char * configFile )
+int SP_HiveDBClient :: init( const char * configFile, int rpcType )
 {
 	mImpl->mConfig = new SP_HiveDBClientConfig();
+	mImpl->mRpcType = rpcType;
 
 	int ret = mImpl->mConfig->init( configFile );
 
@@ -134,7 +140,7 @@ SP_HiveRespObject * SP_HiveDBClient :: execute( int dbfile, const char * user,
 
 	SP_NKSocket * socket = getSocket( dbfile );
 	if( NULL != socket ) {
-		SP_HiveDBProtocol protocol( socket, 1 );
+		SP_HiveDBProtocol protocol( socket, 1, mImpl->mRpcType );
 
 		resp = protocol.execute( dbfile, user, dbname, sql );
 
@@ -148,16 +154,154 @@ SP_HiveRespObject * SP_HiveDBClient :: execute( int dbfile, const char * user,
 	return resp;
 }
 
+int SP_HiveDBClient :: remove( int dbfile, const char * user, const char * dbname )
+{
+	int ret = -1;
+
+	SP_NKSocket * socket = getSocket( dbfile );
+	if( NULL != socket ) {
+		SP_HiveDBProtocol protocol( socket, 1, mImpl->mRpcType );
+
+		if( 0 == protocol.remove( dbfile, user, dbname, &ret ) ) {
+			mImpl->mSocketPool->save( socket );
+		} else {
+			delete socket;
+		}
+	}
+
+	return ret;
+}
+
 //====================================================================
 
-SP_HiveDBProtocol :: SP_HiveDBProtocol( SP_NKSocket * socket, int isKeepAlive )
+SP_HiveDBProtocol :: SP_HiveDBProtocol( SP_NKSocket * socket, int isKeepAlive, int rpcType )
 {
 	mSocket = socket;
 	mIsKeepAlive = isKeepAlive;
+	mRpcType = rpcType;
 }
 
 SP_HiveDBProtocol :: ~SP_HiveDBProtocol()
 {
+}
+
+int SP_HiveDBProtocol :: clientCall( SP_NKSocket * socket, const char * uri,
+		int isKeepAlive, const char * reqBuff, int reqLen, SP_NKHttpResponse * httpResp )
+{
+	SP_NKHttpRequest httpReq;
+	{
+		httpReq.setMethod( "POST" );
+		httpReq.setURI( uri );
+		httpReq.setVersion( "HTTP/1.1" );
+		if( isKeepAlive ) httpReq.addHeader( "Connection", "Keep-Alive" );
+		httpReq.addHeader( "Host", "127.0.0.1" );
+
+		httpReq.appendContent( reqBuff, reqLen );
+	}
+
+	return SP_NKHttpProtocol::post( socket, &httpReq, httpResp );
+}
+
+SP_HiveRespObject * SP_HiveDBProtocol :: execute( int dbfile, const char * user,
+		const char * dbname, SP_NKStringList * sql )
+{
+	if( mRpcType == SP_HiveDBClientConfig::eProtoBufRpc ) {
+		return executeProtoBuf( dbfile, user, dbname, sql );
+	} else {
+		return executeJson( dbfile, user, dbname, sql );
+	}
+}
+
+int SP_HiveDBProtocol :: remove( int dbfile, const char * user,
+		const char * dbname, int * result )
+{
+	if( mRpcType == SP_HiveDBClientConfig::eProtoBufRpc ) {
+		return removeProtoBuf( dbfile, user, dbname, result );
+	} else {
+		return removeJson( dbfile, user, dbname, result );
+	}
+}
+
+SP_HiveRespObject * SP_HiveDBProtocol :: executeProtoBuf( int dbfile, const char * user,
+		const char * dbname, SP_NKStringList * sql )
+{
+	SP_ProtoBufEncoder params;
+	{
+		makeArgs( &params, dbfile, user, dbname );
+
+		for( int i = 0; i < sql->getCount(); i++ ) {
+			params.addString( SP_HiveReqObjectProtoBuf::eSQL, sql->getItem(i) );
+		}
+	}
+
+	SP_ProtoBufEncoder reqEncoder;
+
+	SP_ProtoBufRpcUtils::initReqEncoder( &reqEncoder, "execute", user );
+
+	reqEncoder.addBinary( SP_ProtoBufRpcReqObject::eParams,
+			params.getBuffer(), params.getSize() );
+
+	SP_HiveRespObjectProtoBuf * resp = NULL;
+
+	SP_NKHttpResponse httpResp;
+
+	int ret = clientCall( mSocket, "/sphivedb/protobuf", mIsKeepAlive,
+			reqEncoder.getBuffer(), reqEncoder.getSize(), &httpResp );
+
+	if( 0 == ret ) {
+		SP_ProtoBufRpcRespObject * inner = new SP_ProtoBufRpcRespObject();
+		inner->copyFrom( (char*)httpResp.getContent(), httpResp.getContentLength() );
+		resp = new SP_HiveRespObjectProtoBuf( inner, 1 );
+	} else {
+		SP_NKLog::log( LOG_WARNING, "clientCall %d", ret );
+	}
+
+	return resp;
+}
+
+int SP_HiveDBProtocol :: removeProtoBuf( int dbfile, const char * user,
+		const char * dbname, int * result )
+{
+	SP_ProtoBufEncoder params;
+	{
+		makeArgs( &params, dbfile, user, dbname );
+	}
+
+	SP_ProtoBufEncoder reqEncoder;
+
+	SP_ProtoBufRpcUtils::initReqEncoder( &reqEncoder, "remove", user );
+
+	reqEncoder.addBinary( SP_ProtoBufRpcReqObject::eParams,
+			params.getBuffer(), params.getSize() );
+
+	SP_NKHttpResponse httpResp;
+
+	int ret = clientCall( mSocket, "/sphivedb/protobuf", mIsKeepAlive,
+			reqEncoder.getBuffer(), reqEncoder.getSize(), &httpResp );
+
+	if( 0 == ret ) {
+		SP_ProtoBufDecoder decoder;
+		decoder.copyFrom( (char*)httpResp.getContent(), httpResp.getContentLength() );
+
+		SP_ProtoBufDecoder::KeyValPair_t pair;
+		if( decoder.find( SP_ProtoBufRpcRespObject::eResult, &pair ) ) {
+			return pair.m32Bit.s;
+		}
+	} else {
+		SP_NKLog::log( LOG_WARNING, "clientCall %d", ret );
+	}
+
+	return -1;
+}
+
+int SP_HiveDBProtocol :: makeArgs( SP_ProtoBufEncoder * args, int dbfile,
+		const char * user, const char * dbname )
+{
+	args->add32Bit( SP_HiveReqObjectProtoBuf::eDBFile, dbfile );
+	args->addString( SP_HiveReqObjectProtoBuf::eUser, user );
+	args->addString( SP_HiveReqObjectProtoBuf::eDBName, dbname );
+
+	return 0;
 }
 
 int SP_HiveDBProtocol :: makeArgs( SP_JsonObjectNode * args, int dbfile, const char * user,
@@ -184,24 +328,7 @@ int SP_HiveDBProtocol :: makeArgs( SP_JsonObjectNode * args, int dbfile, const c
 	return 0;
 }
 
-int SP_HiveDBProtocol :: clientCall( SP_NKSocket * socket, int isKeepAlive,
-		SP_JsonStringBuffer * reqBuff, SP_NKHttpResponse * httpResp )
-{
-	SP_NKHttpRequest httpReq;
-	{
-		httpReq.setMethod( "POST" );
-		httpReq.setURI( "/sphivedb" );
-		httpReq.setVersion( "HTTP/1.1" );
-		if( isKeepAlive ) httpReq.addHeader( "Connection", "Keep-Alive" );
-		httpReq.addHeader( "Host", "127.0.0.1" );
-
-		httpReq.appendContent( reqBuff->getBuffer(), reqBuff->getSize() );
-	}
-
-	return SP_NKHttpProtocol::post( socket, &httpReq, httpResp );
-}
-
-SP_HiveRespObject * SP_HiveDBProtocol :: execute( int dbfile, const char * user,
+SP_HiveRespObject * SP_HiveDBProtocol :: executeJson( int dbfile, const char * user,
 		const char * dbname, SP_NKStringList * sql )
 {
 	SP_JsonArrayNode params;
@@ -233,7 +360,8 @@ SP_HiveRespObject * SP_HiveDBProtocol :: execute( int dbfile, const char * user,
 
 	SP_NKHttpResponse httpResp;
 
-	int ret = clientCall( mSocket, mIsKeepAlive, &buffer, &httpResp );
+	int ret = clientCall( mSocket, "/sphivedb", mIsKeepAlive,
+			buffer.getBuffer(), buffer.getSize(), &httpResp );
 
 	if( 0 == ret ) {
 		SP_JsonRpcRespObject * inner = new SP_JsonRpcRespObject(
@@ -246,8 +374,8 @@ SP_HiveRespObject * SP_HiveDBProtocol :: execute( int dbfile, const char * user,
 	return resp;
 }
 
-int SP_HiveDBProtocol :: remove( int dbfile, const char * user,
-		const char * dbname )
+int SP_HiveDBProtocol :: removeJson( int dbfile, const char * user,
+		const char * dbname, int * result )
 {
 	SP_JsonArrayNode params;
 	{
@@ -264,16 +392,17 @@ int SP_HiveDBProtocol :: remove( int dbfile, const char * user,
 
 	SP_NKHttpResponse httpResp;
 
-	int ret = clientCall( mSocket, mIsKeepAlive, &buffer, &httpResp );
+	int ret = clientCall( mSocket, "/sphivedb", mIsKeepAlive,
+			buffer.getBuffer(), buffer.getSize(), &httpResp );
 
 	if( 0 == ret ) {
 		SP_JsonRpcRespObject respObj( (char*)httpResp.getContent(),
 				httpResp.getContentLength() );
 
 		SP_JsonHandle handle( respObj.getResult() );
-		SP_JsonIntNode * result = handle.toInt();
+		SP_JsonIntNode * resultNode = handle.toInt();
 
-		ret = ( NULL != result ) ? result->getValue() : -1;
+		*result = ( NULL != resultNode ) ? resultNode->getValue() : -1;
 	}
 
 	return ret;

@@ -10,6 +10,8 @@
 
 #include "sphivemanager.hpp"
 #include "sphivemsg.hpp"
+#include "sphivejson.hpp"
+#include "sphivepb.hpp"
 #include "sphivegather.hpp"
 
 #include "spserver/sphttp.hpp"
@@ -18,6 +20,7 @@
 #include "spjson/spjsonrpc.hpp"
 #include "spjson/spjsonutils.hpp"
 #include "spjson/spjsonnode.hpp"
+#include "spjson/sppbrpc.hpp"
 
 SP_HiveHandler :: SP_HiveHandler( SP_HiveManager * manager )
 {
@@ -29,6 +32,15 @@ SP_HiveHandler :: ~SP_HiveHandler()
 }
 
 void SP_HiveHandler :: handle( SP_HttpRequest * request, SP_HttpResponse * response )
+{
+	if( 0 == strcasecmp( request->getURI(), "/sphivedb/protobuf" ) ) {
+		handleProtoBuf( request, response );
+	} else {
+		handleJson( request, response );
+	}
+}
+
+void SP_HiveHandler :: handleJson( SP_HttpRequest * request, SP_HttpResponse * response )
 {
 	SP_JsonRpcReqObject rpcReq( (char*)request->getContent(), request->getContentLength() );
 
@@ -60,7 +72,7 @@ void SP_HiveHandler :: handle( SP_HttpRequest * request, SP_HttpResponse * respo
 				NULL, &respBuffer );
 	} else {
 		SP_JsonRpcUtils::toRespBuffer( rpcReq.getID(), NULL,
-				respObject.getErrdata(), &respBuffer );
+				respObject.getError(), &respBuffer );
 	}
 
 	if( NULL != result && respObject.getResult() != result ) delete result;
@@ -69,6 +81,57 @@ void SP_HiveHandler :: handle( SP_HttpRequest * request, SP_HttpResponse * respo
 
 	int len = respBuffer.getSize();
 	response->directSetContent( respBuffer.takeBuffer(), len );
+}
+
+void SP_HiveHandler :: handleProtoBuf( SP_HttpRequest * request, SP_HttpResponse * response )
+{
+	SP_ProtoBufRpcReqObject rpcReq;
+	rpcReq.copyFrom( (char*)request->getContent(), request->getContentLength() );
+
+	int ret = -1;
+
+	SP_ProtoBufDecoder::KeyValPair_t result, id;
+	memset( &result, 0, sizeof( result ) );
+	rpcReq.getID( &id );
+
+	SP_HiveReqObjectProtoBuf reqObject( &rpcReq );
+	SP_HiveRespObjectGatherProtoBuf respObject;
+
+	if( NULL == rpcReq.getPacketError() ) {
+		if( 0 == strcasecmp( rpcReq.getMethod(), "execute" ) ) {
+			ret = doExecute( &reqObject, &respObject );
+
+			result.mWireType = SP_ProtoBufDecoder::eWireBinary;
+			result.mBinary.mBuffer = (char*)respObject.getResult()->getBuffer();
+			result.mBinary.mLen = respObject.getResult()->getSize();
+		} else if( 0 == strcasecmp( rpcReq.getMethod(), "remove" ) ) {
+			ret = doRemove( &reqObject, &respObject );
+
+			result.mWireType = SP_ProtoBufDecoder::eWire32Bit;
+			result.m32Bit.s = ret;
+		} else {
+			respObject.reportError( SP_JsonRpcUtils::eMethodNoFound, "Method not found." );
+		}
+	} else {
+		respObject.reportError( SP_JsonRpcUtils::eInvalidRequest, rpcReq.getPacketError() );
+	}
+
+	SP_ProtoBufEncoder respEncoder;
+
+	if( 0 == ret ) {
+		SP_ProtoBufRpcUtils::initRespEncoder( &respEncoder, &id, NULL );
+
+		SP_ProtoBufCodecUtils::addField( &respEncoder,
+				SP_ProtoBufRpcRespObject::eResult, &result );
+	} else {
+		SP_ProtoBufRpcUtils::initRespEncoder( &respEncoder, &id,
+				respObject.getError() );
+	}
+
+	response->setStatusCode( 200 );
+
+	int len = respEncoder.getSize();
+	response->directSetContent( respEncoder.takeBuffer(), len );
 }
 
 int SP_HiveHandler :: doExecute( SP_HiveReqObject * reqObject, SP_HiveRespObjectGather * respObject )

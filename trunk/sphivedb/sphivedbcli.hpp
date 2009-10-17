@@ -19,11 +19,15 @@ class SP_NKHttpResponse;
 
 class SP_JsonObjectNode;
 class SP_JsonStringBuffer;
+class SP_ProtoBufEncoder;
 
 typedef struct tagSP_HiveDBClientConfigImpl SP_HiveDBClientConfigImpl_t;
 typedef struct tagSP_HiveDBClientImpl SP_HiveDBClientImpl_t;
 
 class SP_HiveDBClientConfig {
+public:
+	enum { eJsonRpc, eProtoBufRpc };
+
 public:
 	SP_HiveDBClientConfig();
 	~SP_HiveDBClientConfig();
@@ -43,15 +47,12 @@ public:
 	SP_HiveDBClient();
 	~SP_HiveDBClient();
 
-	int init( const char * configFile );
+	int init( const char * configFile, int rpcType = SP_HiveDBClientConfig::eJsonRpc );
 
 	SP_HiveRespObject * execute( int dbfile, const char * user, const char * dbname,
 			SP_NKStringList * sql );
 
 	int remove( int dbfile, const char * user, const char * dbname );
-
-	int get( int dbfile, const char * user, const char * dbname,
-			struct iovec * buff );
 
 private:
 	SP_NKSocket * getSocket( int dbfile );
@@ -63,29 +64,42 @@ private:
 class SP_HiveDBProtocol {
 public:
 
-	SP_HiveDBProtocol( SP_NKSocket * socket, int isKeepAlive );
+	SP_HiveDBProtocol( SP_NKSocket * socket, int isKeepAlive, int rpcType );
 
 	~SP_HiveDBProtocol();
 
 	SP_HiveRespObject * execute( int dbfile, const char * user, const char * dbname,
 			SP_NKStringList * sql );
 
-	int remove( int dbfile, const char * user, const char * dbname );
-
-	int get( int dbfile, const char * user, const char * dbname,
-			struct iovec * buff );
+	int remove( int dbfile, const char * user, const char * dbname, int * result );
 
 private:
+
+	SP_HiveRespObject * executeJson( int dbfile, const char * user, const char * dbname,
+			SP_NKStringList * sql );
+
+	int removeJson( int dbfile, const char * user, const char * dbname, int * result );
 
 	static int makeArgs( SP_JsonObjectNode * args, int dbfile, const char * user,
 			const char * dbname );
 
-	static int clientCall( SP_NKSocket * socket, int isKeepAlive,
-			SP_JsonStringBuffer * reqBuff, SP_NKHttpResponse * httpResp );
+	SP_HiveRespObject * executeProtoBuf( int dbfile, const char * user, const char * dbname,
+			SP_NKStringList * sql );
+
+	int removeProtoBuf( int dbfile, const char * user, const char * dbname, int * result );
+
+	static int makeArgs( SP_ProtoBufEncoder * args, int dbfile, const char * user,
+			const char * dbname );
+
+private:
+
+	static int clientCall( SP_NKSocket * socket, const char * uri, int isKeepAlive,
+			const char * reqBuff, int reqLen, SP_NKHttpResponse * httpResp );
 
 private:
 	SP_NKSocket * mSocket;
 	int mIsKeepAlive;
+	int mRpcType;
 };
 
 #endif
