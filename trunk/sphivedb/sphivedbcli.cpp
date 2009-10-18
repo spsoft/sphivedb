@@ -285,13 +285,13 @@ int SP_HiveDBProtocol :: removeProtoBuf( int dbfile, const char * user,
 
 		SP_ProtoBufDecoder::KeyValPair_t pair;
 		if( decoder.find( SP_ProtoBufRpcRespObject::eResult, &pair ) ) {
-			return pair.m32Bit.s;
+			*result = pair.m32Bit.s;
 		}
 	} else {
 		SP_NKLog::log( LOG_WARNING, "clientCall %d", ret );
 	}
 
-	return -1;
+	return ret;
 }
 
 int SP_HiveDBProtocol :: makeArgs( SP_ProtoBufEncoder * args, int dbfile,
