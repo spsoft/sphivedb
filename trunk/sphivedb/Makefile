@@ -33,10 +33,10 @@ LIBOBJS = sphivemsg.o sphivejson.o sphivepb.o sphivedbcli.o
 
 HIVEDBSVR_OBJS = spmemvfs.o spcabinet.o sphivehandler.o sphivemanager.o \
 		sphiveconfig.o sphivedbsvr.o sphiveschema.o \
-		sphivestore.o spdbmstore.o sphivegather.o
+		sphivestore.o spdbmstore.o sphivegather.o sphivetracer.o
 
 SQLITESVR_OBJS = sphivehandler.o sphivemanager.o \
-		sphiveconfig.o sphiveschema.o \
+		sphiveconfig.o sphiveschema.o sphivetracer.o \
 		sphivestore.o spfilestore.o spsqlitesvr.o sphivegather.o
 
 TARGET = libsphivedbcli.so libsphivedbcli.a \
@@ -72,7 +72,7 @@ testmsg: sphivemsg.o sphivejson.o testmsg.o spsqlite.o
 
 testmanager: testmanager.o sphivemanager.o sphivemsg.o \
 		sphiveconfig.o sphivejson.o spcabinet.o spmemvfs.o spsqlite.o \
-		sphiveschema.o sphivestore.o spdbmstore.o sphivegather.o
+		sphiveschema.o sphivestore.o spdbmstore.o sphivegather.o sphivetracer.o
 	$(LINKER) -o $@ $^ $(HIVEDBSVR_LIB)
 
 testcli: testcli.o
@@ -101,7 +101,7 @@ testmysql.o: CFLAGS += -I/usr/local/include/mysql
 
 spcabinet.o: CFLAGS += -std=c99
 
-#spsqlite.o: CFLAGS += -O2
+spsqlite.o: CFLAGS += -O2
 
 clean:
 	@( $(RM) *.o vgcore.* core core.* $(TARGET) $(TEST_TARGET) )
