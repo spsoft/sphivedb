@@ -111,8 +111,12 @@ void * threadFunc( void * args )
 	float writePerSeconds = ( writeTimes * 1000.0 ) / usedTime;
 	float readPerSeconds = ( readTimes * 1000.0 ) / usedTime;
 
-	printf( "Used Time: %d (ms), Write %d (%.2f), Read %d (%.2f), Fail %d\n",
-			usedTime, writeTimes, writePerSeconds, readTimes, readPerSeconds, failTimes );
+	float timePerWrite = usedTime * 1.0 / writeTimes;
+	float timePerRead = usedTime * 1.0 / readTimes;
+
+	printf( "Used Time: %d (ms), Write %d [ops %.2f rt %.2f], Read %d [ops %.2f rt %.2f], Fail %d\n",
+			usedTime, writeTimes, writePerSeconds, timePerWrite,
+			readTimes, readPerSeconds, timePerRead, failTimes );
 
 	gTotalReadTimes += readTimes;
 	gTotalWriteTimes += writeTimes;
