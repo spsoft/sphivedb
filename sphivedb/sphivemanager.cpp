@@ -14,6 +14,7 @@
 #include "sphiveschema.hpp"
 #include "sphivestore.hpp"
 #include "sphivegather.hpp"
+#include "sphivetracer.hpp"
 
 #include "sqlite3.h"
 
@@ -120,6 +121,8 @@ int SP_HiveManager :: remove( SP_HiveReqObject * reqObject, SP_HiveRespObjectGat
 
 int SP_HiveManager :: execute( SP_HiveReqObject * reqObject, SP_HiveRespObjectGather * gather )
 {
+	SP_HiveExecuteTracer tracer;
+
 	int ret = 0;
 
 	if( 0 != checkReq( reqObject, gather ) ) return -1;
@@ -137,7 +140,11 @@ int SP_HiveManager :: execute( SP_HiveReqObject * reqObject, SP_HiveRespObjectGa
 		return -1;
 	}
 
+	tracer.lock();
+
 	SP_HiveStore * store = mStoreManager->load( reqObject );
+
+	tracer.load();
 
 	if( NULL != store ) {
 		ret = mSchemaManager->ensureSchema( store->getHandle(), dbname );
@@ -147,6 +154,8 @@ int SP_HiveManager :: execute( SP_HiveReqObject * reqObject, SP_HiveRespObjectGa
 		gather->reportErrdata( -1, "load store fail" );
 	}
 
+	tracer.schema();
+
 	int hasUpdate = 0;
 
 	// execute sql script
@@ -154,6 +163,8 @@ int SP_HiveManager :: execute( SP_HiveReqObject * reqObject, SP_HiveRespObjectGa
 		int dbRet = 0;
 
 		dbRet = SP_HiveSchemaManager::execWithLog( store->getHandle(), "BEGIN" );
+
+		tracer.transBegin();
 
 		for( int i = 0; i < reqObject->getSqlCount(); i++ ) {
 			const char * sql = reqObject->getSql( i );
@@ -172,18 +183,26 @@ int SP_HiveManager :: execute( SP_HiveReqObject * reqObject, SP_HiveRespObjectGa
 			}
 		}
 
+		tracer.trans();
+
 		if( 0 == ret ) {
 			dbRet = SP_HiveSchemaManager::execWithLog( store->getHandle(), "COMMIT" );
 		} else {
 			dbRet = SP_HiveSchemaManager::execWithLog( store->getHandle(), "ROLLBACK" );
 		}
+
+		tracer.transEnd();
 	}
 
 	if( 0 == ret && hasUpdate ) {
 		ret = mStoreManager->save( reqObject, store );
 	}
 
+	tracer.save();
+
 	mStoreManager->close( store );
+
+	tracer.close();
 
 	SP_NKLog::log( LOG_DEBUG, "DEBUG: execute( %d, %s, %s, {%d} ) = %d",
 			dbfile, user, dbname,  reqObject->getSqlCount(), ret );
