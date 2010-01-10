@@ -80,7 +80,7 @@ void SP_HiveHandler :: handleJson( SP_HttpRequest * request, SP_HttpResponse * r
 	response->setStatusCode( 200 );
 
 	int len = respBuffer.getSize();
-	response->directSetContent( respBuffer.takeBuffer(), len );
+	response->directSetContent( respBuffer.detach( &len ), len );
 }
 
 void SP_HiveHandler :: handleProtoBuf( SP_HttpRequest * request, SP_HttpResponse * response )
