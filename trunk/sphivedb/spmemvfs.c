@@ -6,8 +6,6 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <search.h>
-#include <pthread.h>
 
 #include "spmemvfs.h"
 
@@ -398,7 +396,7 @@ void spmembuffer_link_free( spmembuffer_link_t * iter )
 
 typedef struct spmemvfs_env_t {
 	spmembuffer_link_t * head;
-	pthread_mutex_t mutex;
+	sqlite3_mutex * mutex;
 } spmemvfs_env_t;
 
 static spmemvfs_env_t * g_spmemvfs_env = NULL;
@@ -409,7 +407,7 @@ static spmembuffer_t * load_cb( void * arg, const char * path )
 
 	spmemvfs_env_t * env = (spmemvfs_env_t*)arg;
 
-	pthread_mutex_lock( &( env->mutex ) );
+	sqlite3_mutex_enter( env->mutex );
 	{
 		spmembuffer_link_t * toFind = spmembuffer_link_remove( &( env->head ), path );
 
@@ -419,7 +417,7 @@ static spmembuffer_t * load_cb( void * arg, const char * path )
 			free( toFind );
 		}
 	}
-	pthread_mutex_unlock( &( env->mutex ) );
+	sqlite3_mutex_leave( env->mutex );
 
 	return ret;
 }
@@ -432,7 +430,7 @@ int spmemvfs_env_init()
 		spmemvfs_cb_t cb;
 
 		g_spmemvfs_env = (spmemvfs_env_t*)calloc( sizeof( spmemvfs_env_t ), 1 );
-		pthread_mutex_init( &(g_spmemvfs_env->mutex), NULL );
+		g_spmemvfs_env->mutex = sqlite3_mutex_alloc( SQLITE_MUTEX_FAST );
 
 		cb.arg = g_spmemvfs_env;
 		cb.load = load_cb;
@@ -450,7 +448,7 @@ void spmemvfs_env_fini()
 
 		sqlite3_vfs_unregister( (sqlite3_vfs*)&g_spmemvfs );
 
-		pthread_mutex_destroy( &( g_spmemvfs_env->mutex ) );
+		sqlite3_mutex_free( g_spmemvfs_env->mutex );
 
 		iter = g_spmemvfs_env->head;
 		for( ; NULL != iter; ) {
@@ -478,12 +476,12 @@ int spmemvfs_open_db( spmemvfs_db_t * db, const char * path, spmembuffer_t * mem
 	iter->path = strdup( path );
 	iter->mem = mem;
 
-	pthread_mutex_lock( &(g_spmemvfs_env->mutex) );
+	sqlite3_mutex_enter( g_spmemvfs_env->mutex );
 	{
 		iter->next = g_spmemvfs_env->head;
 		g_spmemvfs_env->head = iter;
 	}
-	pthread_mutex_unlock( &(g_spmemvfs_env->mutex) );
+	sqlite3_mutex_leave( g_spmemvfs_env->mutex );
 
 	ret = sqlite3_open_v2( path, &(db->handle),
 			SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, SPMEMVFS_NAME );
@@ -491,12 +489,12 @@ int spmemvfs_open_db( spmemvfs_db_t * db, const char * path, spmembuffer_t * mem
 	if( 0 == ret ) {
 		db->mem = mem;
 	} else {
-		pthread_mutex_lock( &(g_spmemvfs_env->mutex) );
+		sqlite3_mutex_enter( g_spmemvfs_env->mutex );
 		{
 			iter = spmembuffer_link_remove( &(g_spmemvfs_env->head), path );
 			if( NULL != iter ) spmembuffer_link_free( iter );
 		}
-		pthread_mutex_unlock( &(g_spmemvfs_env->mutex) );
+		sqlite3_mutex_leave( g_spmemvfs_env->mutex );
 	}
 
 	return ret;
